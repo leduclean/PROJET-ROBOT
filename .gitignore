@@ -1,0 +1,6 @@
+# Ignorer les fichiers générés par la compilation Arduino
+build/
+*.hex
+*.elf
+*.eep
+*.bin
