@@ -213,6 +213,7 @@ void Robot::decode_ir() {
 
 // Suiveur de ligne
 
+
 void Robot::line_follower() {
   uint8_t NewSensorState = 0;
   if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == LOW) NewSensorState = 1;    // set bit 0 if input is HIGH
