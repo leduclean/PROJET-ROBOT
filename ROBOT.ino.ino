@@ -2,7 +2,7 @@
 #include <IRremote.hpp>
 
 
-// TODO -> choisir les bons delay pour la fonction height et right et left
+// TODO -> changer créer un état arriere 
 
 Robot* robot;
 
@@ -17,6 +17,5 @@ void setup() {
 void loop() {
   robot->decode_ir();
   robot->update(); // Ne surtout pas enlever ou erreur -> gere tout les timings des fonctions 
-
 
 }
