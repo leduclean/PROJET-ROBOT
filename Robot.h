@@ -11,7 +11,7 @@
 class Robot {
 
 private:
-enum RobotMovementState { MOVEMENT_IDLE, FORWARD, BACKWARD };
+enum RobotMovementState { MOVEMENT_IDLE, FORWARD, BACKWARD, LINEFOLLOWING };
 enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
 
     enum class CommandeIR : unsigned long {
@@ -24,6 +24,8 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
     LEFT = 0xBB44FF00,      // <<
     DEMITOUR = 0xE916FF00,  // 0
     EIGHT = 0xBB44FF00,
+    LINEFOLLOWER = 0xF609FF00
+
   };
 
   Moteur moteurD;  // Moteur droit
@@ -61,6 +63,7 @@ public:
 
   // Méthodes pour les capteurs
   void initialize_ir();
+  void initialize_line_pin();
   void decode_ir();
   void line_follower();
 

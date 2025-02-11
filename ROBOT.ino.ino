@@ -7,7 +7,7 @@
 Robot* robot;
 
 void setup() {
-  robot = new Robot(110);
+  robot = new Robot(50);
   Serial.begin(9600);
 
 }
@@ -17,5 +17,5 @@ void setup() {
 void loop() {
   robot->decode_ir();
   robot->update(); // Ne surtout pas enlever ou erreur -> gere tout les timings des fonctions 
-
+  robot->line_follower();
 }

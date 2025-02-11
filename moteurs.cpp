@@ -10,10 +10,7 @@ Moteur::Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float 
       pinMode(pin_backward, OUTPUT);
       pinMode(PWM_pin, OUTPUT);
     };
-#define LINE_FOLLOWER_LEFT_SENSOR_PIN   A0
-#define LINE_FOLLOWER_MID_SENSOR_PIN    A1
-#define LINE_FOLLOWER_RIGHT_SENSOR_PIN  A2
-// Méthode pour définir une nouvelle vitesse
+
 
 // Gere la vitesse du robot et la direction: si positif: avant, si négatif: arriere
 void Moteur::set_speed(int speed) {
