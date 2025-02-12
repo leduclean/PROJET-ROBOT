@@ -11,7 +11,8 @@
 class Robot {
 
 private:
-enum RobotMovementState { MOVEMENT_IDLE, FORWARD, BACKWARD, LINEFOLLOWING };
+enum TurnDirection {NONE, RIGHT, LEFT};
+enum RobotMovementState { MOVEMENT_IDLE, FORWARD, BACKWARD, LINEFOLLOWING, SHARPTURNING};
 enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
 
     enum class CommandeIR : unsigned long {
@@ -32,10 +33,21 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
   Moteur moteurG;  // Moteur gauche
   RobotMovementState movementState; // etat de mouvement
   RobotRotationState rotationState; // etat de rotation
+  TurnDirection lastTurnDirection;
   unsigned long rotationStartTime;  // Temps de début de la rotation
   unsigned long rotationDuration;   // Durée de rotation calculée en ms
   int robot_speed;                  // Vitesse de base
   uint8_t CurrentLineSensorState;
+  int base_speed;
+
+  // pid value
+  float pidKp = 50.0;
+  float pidKi = 0.0;
+  float pidKd = 10.0;
+  float pidIntegral = 0.0;
+  float pidLastError = 0.0;
+  unsigned long pidLastTime = 0;
+
 
 public:
   // Attribut pubic
@@ -63,9 +75,14 @@ public:
 
   // Méthodes pour les capteurs
   void initialize_ir();
-  void initialize_line_pin();
   void decode_ir();
+  void initialize_line_pin();
+  uint8_t getSensorState();
   void line_follower();
+  void sharpturn();
+  void line_follower_pid();
+  void resetPID();
+
 
 
 
