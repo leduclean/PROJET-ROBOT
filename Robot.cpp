@@ -289,6 +289,7 @@ void Robot::decode_ir() {
             stop();
           } else {
             resetPID();
+            set_robot_speed(base_speed);  // Réinitialise la vitesse à la valeur de base
             changeMovementState(LINEFOLLOWING);
           }
           break;
@@ -374,6 +375,7 @@ void Robot::line_follower(){
 }
 
 void Robot::sharpturn(){
+  Serial.println("last direction: " + String(lastTurnDirection));
   uint8_t sensorstate = getSensorState();
   if (sensorstate != 1) {
     rotate((lastTurnDirection == RIGHT) ? 5: -5);
@@ -387,6 +389,7 @@ void Robot::resetPID() {
     pidIntegral = 0.0;
     pidLastError = 0.0;
     pidLastTime = 0;
+    // Serial.println("pid factor: " + String(pidIntegral) + String(pidLastError) + String(pidLastTime));
 }
 
 // Line follower via PID 
@@ -408,7 +411,10 @@ void Robot::line_follower_pid() {
 
 if(count > 0) {
   error = error / count;
-} else {
+} else if (count == 3) {
+  return;
+}
+else {
   changeMovementState(SHARPTURNING);
   return;
 }
@@ -428,7 +434,7 @@ if(count > 0) {
   float derivative = (error - pidLastError) / dt;
   float correction = pidKp * error + pidKi * pidIntegral + pidKd * derivative;
   pidLastError = error;
-  lastTurnDirection = (error < 0) ? RIGHT: LEFT;
+  lastTurnDirection = (error > 0) ? RIGHT: LEFT;
 
   // Calcul des vitesses pour les moteurs
   // On part d'une vitesse de base (robot_speed) et on ajuste avec la correction.
