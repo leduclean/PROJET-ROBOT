@@ -26,13 +26,13 @@ Robot::Robot(int base_speed)
   initialize_line_pin();
 }
 
-// Fonction d'initialisation 
+// Fonction d'initialisation
 void Robot::initialize_ir() {
   Serial.println("Initialisation IR");
   IrReceiver.begin(IR_RECEIVER_PIN, ENABLE_LED_FEEDBACK);  // Démarrer le récepteur IR
 }
 
-void Robot::initialize_line_pin(){
+void Robot::initialize_line_pin() {
   pinMode(LINE_FOLLOWER_LEFT_PIN, INPUT);
   pinMode(LINE_FOLLOWER_MID_PIN, INPUT);
   pinMode(LINE_FOLLOWER_RIGHT_PIN, INPUT);
@@ -45,10 +45,9 @@ void Robot::initialize_line_pin(){
 // Définit la vitesse du robot et met à jour l'état de déplacement
 void Robot::set_robot_speed(int speed) {
   robot_speed = abs(speed);  // Met à jour la vitesse de base (toujours positive)
-  if (movementState != LINEFOLLOWING){
-    changeMovementState((speed > 0) ? FORWARD : (speed < 0) ? BACKWARD
+  changeMovementState((speed > 0) ? FORWARD : (speed < 0) ? BACKWARD
                                                           : MOVEMENT_IDLE);
-  }
+
   moteurD.set_speed(speed);
   moteurG.set_speed(speed);
 }
@@ -152,10 +151,10 @@ void Robot::rotate(int angle, bool move, bool backward) {
 
 // Change l'état de déplacement
 void Robot::changeMovementState(RobotMovementState newMovementState) {
-    if (newMovementState == LINEFOLLOWING) {
-        resetPID();
-    }
-    movementState = newMovementState;
+  if (newMovementState == LINEFOLLOWING) {
+    resetPID();
+  }
+  movementState = newMovementState;
 }
 
 // Change l'état de rotation
@@ -169,12 +168,12 @@ void Robot::printState() {
                                                                       : (rotationState == ROTATING) ? "ROTATING"
                                                                                                     : "UNKNOWN";
 
-  String movementStr = (movementState == MOVEMENT_IDLE) ? "IDLE" 
-                     : (movementState == FORWARD)  ? "FORWARD"
-                     : (movementState == BACKWARD) ? "BACKWARD"
-                     : (movementState == LINEFOLLOWING) ? "LINEFOLLOWING"
-                     : (movementState == SHARPTURNING) ? "SHARPTURNING"
-                     : "UNKNOWN";  // Cas par défaut
+  String movementStr = (movementState == MOVEMENT_IDLE)   ? "IDLE"
+                       : (movementState == FORWARD)       ? "FORWARD"
+                       : (movementState == BACKWARD)      ? "BACKWARD"
+                       : (movementState == LINEFOLLOWING) ? "LINEFOLLOWING"
+                       : (movementState == SHARPTURNING)  ? "SHARPTURNING"
+                                                          : "UNKNOWN";  // Cas par défaut
 
   Serial.print("Rotation State: ");
   Serial.print(RotationstateStr);
@@ -199,11 +198,11 @@ void Robot::update() {
       rotationState = ROTATION_IDLE;
     }
   }
-  if (movementState == SHARPTURNING){
+  if (movementState == SHARPTURNING) {
     sharpturn();
   }
   if (movementState == LINEFOLLOWING) {
-      line_follower_pid();
+    line_follower_pid();
   }
 }
 
@@ -257,6 +256,12 @@ void Robot::decode_ir() {
       // Conversion du code reçu en type CommandeIR
       CommandeIR commande = static_cast<CommandeIR>(codeRecu);
 
+      if (movementState == LINEFOLLOWING && commande != CommandeIR::LINEFOLLOWER) {
+        Serial.println("Commande ignorée : le robot est en mode LINE FOLLOWING.");
+        IrReceiver.resume();  
+        return;
+      }
+
       // Exécuter la commande correspondante
       switch (commande) {
         case CommandeIR::FORWARD:
@@ -297,6 +302,7 @@ void Robot::decode_ir() {
           Serial.println("Commande inconnue !");
           break;
       }
+
       printState();
       last = millis();
     }
@@ -305,16 +311,17 @@ void Robot::decode_ir() {
   }
 }
 
-uint8_t Robot::getSensorState(){
+
+uint8_t Robot::getSensorState() {
   uint8_t sensorState = 0;
-  if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == HIGH)  sensorState |= 1;  // bit 0
-  if (digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH)   sensorState |= 2;  // bit 1
+  if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == HIGH) sensorState |= 1;   // bit 0
+  if (digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH) sensorState |= 2;    // bit 1
   if (digitalRead(LINE_FOLLOWER_RIGHT_PIN) == HIGH) sensorState |= 4;  // bit 2
   return sensorState;
 }
 
-// Line follower via switch case est appelé 
-void Robot::line_follower(){
+// Line follower via switch case est appelé
+void Robot::line_follower() {
   uint8_t NewSensorState = getSensorState();
   /*
      * According to the 8 different states of the 3 sensor inputs, we perform the following actions:
@@ -374,29 +381,28 @@ void Robot::line_follower(){
   }
 }
 
-void Robot::sharpturn(){
+void Robot::sharpturn() {
   Serial.println("last direction: " + String(lastTurnDirection));
   uint8_t sensorstate = getSensorState();
   if (sensorstate != 1) {
-    rotate((lastTurnDirection == RIGHT) ? 5: -5);
-  }
-  else if (sensorstate == 1){
+    rotate((lastTurnDirection == RIGHT) ? 5 : -5);
+  } else if (sensorstate == 1) {
     changeMovementState(LINEFOLLOWING);
   }
 }
-// reset des coefficients du PID 
+// reset des coefficients du PID
 void Robot::resetPID() {
-    pidIntegral = 0.0;
-    pidLastError = 0.0;
-    pidLastTime = 0;
-    // Serial.println("pid factor: " + String(pidIntegral) + String(pidLastError) + String(pidLastTime));
+  pidIntegral = 0.0;
+  pidLastError = 0.0;
+  pidLastTime = 0;
+  // Serial.println("pid factor: " + String(pidIntegral) + String(pidLastError) + String(pidLastTime));
 }
 
-// Line follower via PID 
+// Line follower via PID
 void Robot::line_follower_pid() {
   // Lecture des capteurs individuels
-  int leftVal  = digitalRead(LINE_FOLLOWER_LEFT_PIN);   // 1 si ligne détectée, 0 sinon
-  int midVal   = digitalRead(LINE_FOLLOWER_MID_PIN);
+  int leftVal = digitalRead(LINE_FOLLOWER_LEFT_PIN);  // 1 si ligne détectée, 0 sinon
+  int midVal = digitalRead(LINE_FOLLOWER_MID_PIN);
   int rightVal = digitalRead(LINE_FOLLOWER_RIGHT_PIN);
 
   // Calcul de l'erreur en fonction des poids
@@ -404,25 +410,33 @@ void Robot::line_follower_pid() {
   // On attribue des poids : gauche = -1, centre = 0, droite = +1.
   float error = 0.0;
   int count = 0;
-  
-  if(leftVal == HIGH)  { error += -1; count++; }
-  if(midVal == HIGH)   { error += 0;  count++; }
-  if(rightVal == HIGH) { error += 1;  count++; }
 
-if(count > 0) {
-  error = error / count;
-} else if (count == 3) {
-  return;
-}
-else {
-  changeMovementState(SHARPTURNING);
-  return;
-}
+  if (leftVal == HIGH) {
+    error += -1;
+    count++;
+  }
+  if (midVal == HIGH) {
+    error += 0;
+    count++;
+  }
+  if (rightVal == HIGH) {
+    error += 1;
+    count++;
+  }
+
+  if (count > 0) {
+    error = error / count;
+  } else if (count == 3) {
+    return;
+  } else {
+    changeMovementState(SHARPTURNING);
+    return;
+  }
 
   // Calcul du temps écoulé
   unsigned long currentTime = millis();
   float dt;
-  if(pidLastTime == 0) {
+  if (pidLastTime == 0) {
     dt = 0.01;  // une petite valeur par défaut la première fois
   } else {
     dt = (currentTime - pidLastTime) / 1000.0;  // dt en secondes
@@ -434,19 +448,19 @@ else {
   float derivative = (error - pidLastError) / dt;
   float correction = pidKp * error + pidKi * pidIntegral + pidKd * derivative;
   pidLastError = error;
-  lastTurnDirection = (error > 0) ? RIGHT: LEFT;
+  lastTurnDirection = (error > 0) ? RIGHT : LEFT;
 
   // Calcul des vitesses pour les moteurs
   // On part d'une vitesse de base (robot_speed) et on ajuste avec la correction.
   // Par exemple, augmenter la vitesse du moteur gauche et diminuer celle du moteur droit si correction positive.
-  int leftSpeed  = robot_speed + correction;
+  int leftSpeed = robot_speed + correction;
   int rightSpeed = robot_speed - correction;
 
   // On s'assure que les vitesses restent dans les limites
-  if(leftSpeed > ROBOT_MAX_SPEED)  leftSpeed = ROBOT_MAX_SPEED;
-  if(rightSpeed > ROBOT_MAX_SPEED) rightSpeed = ROBOT_MAX_SPEED;
-  if(leftSpeed < 0)  leftSpeed = 0;
-  if(rightSpeed < 0) rightSpeed = 0;
+  if (leftSpeed > ROBOT_MAX_SPEED) leftSpeed = ROBOT_MAX_SPEED;
+  if (rightSpeed > ROBOT_MAX_SPEED) rightSpeed = ROBOT_MAX_SPEED;
+  if (leftSpeed < 0) leftSpeed = 0;
+  if (rightSpeed < 0) rightSpeed = 0;
 
   // Appliquer les vitesses aux moteurs
   // On suppose ici que set_speed() gère la direction correctement (les valeurs positives entraînent l'avance)
@@ -454,15 +468,17 @@ else {
   moteurD.set_speed(rightSpeed);
 
   // Debug : afficher les valeurs
-  Serial.print("Error: "); Serial.print(error);
-  Serial.print(" Correction: "); Serial.print(correction);
-  Serial.print(" | LeftSpeed: "); Serial.print(leftSpeed);
-  Serial.print(" RightSpeed: "); Serial.println(rightSpeed);
-
-
+  Serial.print("Error: ");
+  Serial.print(error);
+  Serial.print(" Correction: ");
+  Serial.print(correction);
+  Serial.print(" | LeftSpeed: ");
+  Serial.print(leftSpeed);
+  Serial.print(" RightSpeed: ");
+  Serial.println(rightSpeed);
 }
 
 
 // (Ici vous pouvez ajouter d'autres fonctions, par exemple pour le détecteur d'objet)
 
-// approche hybride 
+// approche hybride
