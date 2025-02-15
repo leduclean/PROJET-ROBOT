@@ -4,3 +4,8 @@ build/
 *.elf
 *.eep
 *.bin
+
+# PlatformIO
+.pio/
+.vscode/
+

@@ -120,30 +120,49 @@ void Robot::left(bool pivot) {
 
 // Effectue une rotation avec angle spécifié
 // move indique si la rotation se fait en mouvement (avancer/reculer) et backward si c'est en marche arrière
-void Robot::rotate(int angle, bool move, bool backward) {
-  float timePerDegree = 200.0 / 90.0;  // Temps pour tourner 90° (à ajuster)
-  rotationDuration = abs(angle) * timePerDegree;
 
-  int baseRotationSpeed = (int)(robot_speed * rotationFactor);
+void Robot::rotate(int angle, bool move, bool backward) {
+  // Calculer la vitesse effective à partir des vitesses actuelles
+  // On suppose que dans le mode line follower, leftSpeed et rightSpeed
+  // ont été calculés par le PID et sont accessibles (ou stockés dans des variables membres).
+  int effectiveSpeed = (abs(moteurG.get_speed()) + abs(moteurD.get_speed())) / 2;
+
+  // Calculer le facteur de rotation dynamique
+  float facteurRotation = 1.0 - (effectiveSpeed / (float)ROBOT_MAX_SPEED);
+  // Placer une borne minimale pour éviter que le facteur ne devienne trop faible
+  if (facteurRotation < 0.3) {
+      facteurRotation = 0.3;
+  }
+
+  // Calcul de la vitesse de rotation de base
+  int baseRotationSpeed = (int)(robot_speed * facteurRotation);
+    
+  // Calculer la durée de rotation selon l'angle souhaité et une constante tempsParDegre
+  float timePerDegree = 200/90;  // par exemple, 2 ms par degré (à ajuster)
+  rotationDuration = abs(angle) * timePerDegree;
+  rotationStartTime = millis();
+
   int speedG, speedD;
 
-  rotationStartTime = millis();
   if (!move) {
-    // Rotation sur place
+    // Rotation sur place : les moteurs tournent en sens opposé
     speedG = (angle > 0) ? baseRotationSpeed : -baseRotationSpeed;
     speedD = (angle > 0) ? -baseRotationSpeed : baseRotationSpeed;
   } else {
-    // Rotation en avançant ou en reculant
+    // Rotation en mouvement
     int moveSpeed = backward ? -robot_speed : robot_speed;
+    // On peut ajuster différemment en fonction de l'angle
     speedG = (angle > 0) ? moveSpeed : moveSpeed / 2;
     speedD = (angle > 0) ? moveSpeed / 2 : moveSpeed;
   }
-
+  
+  // Appliquer les vitesses calculées aux moteurs
   moteurG.set_speed(speedG);
   moteurD.set_speed(speedD);
 
   changeRotationState(ROTATING);
 }
+
 
 // ===========================================
 // Gestion des états
