@@ -28,6 +28,6 @@
 // ---------------------- Constantes de vitesse ---------------------- //
 
 #define ROBOT_ACCELERATION_INCREMENT 20   // Incrément de vitesse lors de l’accélération
-#define ROBOT_MAX_SPEED    100 // Vitesse maximale du robot
+#define ROBOT_MAX_SPEED    250 // Vitesse maximale du robot
 
 #endif // CONFIG_ROBOT_H

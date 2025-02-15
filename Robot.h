@@ -1,7 +1,6 @@
 #ifndef ROBOT_H
 #define ROBOT_H
 #include "moteurs.h"
-#include "line_follower.h"
 #include "ROBOT_CONFIG.h"
 #include <Arduino.h>
 
@@ -42,9 +41,12 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
   int base_speed;
 
   // pid value
-  float pidKp = 72.0;
-  float pidKi = 0.00015;
-  float pidKd = 5.0;
+  float pidKp = 2000.0;
+  float pidKi = 0.003;
+  float pidKd = 0;
+  // float pidKp = 72.0;
+  // float pidKi = 0.00015;
+  // float pidKd = 5.0;
   float pidIntegral = 0.0;
   float pidLastError = 0.0;
   unsigned long pidLastTime = 0;
@@ -78,10 +80,12 @@ public:
   void initialize_ir();
   void decode_ir();
   void initialize_line_pin();
+  // Line follower 
   uint8_t getSensorState();
   void line_follower();
   void sharpturn();
   void line_follower_pid();
+  float errorestimation();
   void resetPID();
 
 

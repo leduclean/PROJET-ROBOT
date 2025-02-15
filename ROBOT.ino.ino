@@ -2,12 +2,13 @@
 #include <IRremote.hpp>
 
 
-// TODO -> changer créer un état arriere 
+// TODO -> trouver les bonnes valeurs des coefficients PID
+// TODO -> tester une implémentatino sans sharp turning ou on tourne juste a 90 degré dans la dernière direction ou alors ralentir la vitesse 
 
 Robot* robot;
 
 void setup() {
-  robot = new Robot(50);
+  robot = new Robot(120);
   Serial.begin(9600);
 
 }
@@ -17,5 +18,6 @@ void setup() {
 void loop() {
   robot->decode_ir();
   robot->update(); // Ne surtout pas enlever ou erreur -> gere tout les timings des fonctions 
-  robot->line_follower();
 }
+
+// Pour tourner a droite franchement: stoper la detection jusqua ce que celui de gauche voit 

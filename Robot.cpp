@@ -1,5 +1,4 @@
 #include "Robot.h"
-#include "moteurs.h"
 #define USE_IRREMOTE_HPP_AS_PLAIN_INCLUDE
 #include <IRremote.hpp>
 
@@ -124,14 +123,15 @@ void Robot::left(bool pivot) {
 void Robot::rotate(int angle, bool move, bool backward) {
   float timePerDegree = 200.0 / 90.0;  // Temps pour tourner 90° (à ajuster)
   rotationDuration = abs(angle) * timePerDegree;
-  rotationStartTime = millis();
 
+  int baseRotationSpeed = (int)(robot_speed * rotationFactor);
   int speedG, speedD;
 
+  rotationStartTime = millis();
   if (!move) {
     // Rotation sur place
-    speedG = (angle > 0) ? ROBOT_MAX_SPEED : -ROBOT_MAX_SPEED;
-    speedD = (angle > 0) ? -ROBOT_MAX_SPEED : ROBOT_MAX_SPEED;
+    speedG = (angle > 0) ? baseRotationSpeed : -baseRotationSpeed;
+    speedD = (angle > 0) ? -baseRotationSpeed : baseRotationSpeed;
   } else {
     // Rotation en avançant ou en reculant
     int moveSpeed = backward ? -robot_speed : robot_speed;
@@ -311,6 +311,76 @@ void Robot::decode_ir() {
   }
 }
 
+// LINE FOLLOWER via switch case : moins fluide (donc non recommandée)
+
+
+
+// // Line follower via switch case est appelé
+// void Robot::line_follower() {
+//   uint8_t NewSensorState = getSensorState();
+//   /*
+//      * According to the 8 different states of the 3 sensor inputs, we perform the following actions:
+//      * 0 - All sensors are white or not connected -> stop 
+//      * 1 - Only left sensor is black -> Sharp turn left
+//      * 2 - Only mid sensor is black -> forward 
+//      * 3 - Mid and left sensor are black -> left forward
+//      * 4 - Only right sensor is black -> Sharp turn right
+//      * 5 - Left and right sensor black -> panic stop
+//      * 6 - right and mid sensor are black-> right forward
+//      * 7 - All sensors are black  -> stop or go backward after turn
+//      */
+//   /*
+//      * If sensor input does not change, we do not need to change movement!
+//      */
+//   if (this->CurrentLineSensorState != NewSensorState) {
+//     printState();
+//     Serial.print(F("SensorState="));
+//     Serial.print(NewSensorState);
+//     Serial.print(F(" -> "));
+//     switch (NewSensorState) {
+//       case 0:
+//         stop();
+//         Serial.println(F("Stop"));
+//         break;
+//       case 1:
+//         changeMovementState(SHARPTURNING);
+//         Serial.println(F("sharp turn left"));
+//         break;
+//       case 2:
+//         set_robot_speed(this->base_speed);
+//         Serial.println(F("Forward"));
+//         break;
+//       case 3:
+//         lastTurnDirection = LEFT;
+//         rotate(-180, true);
+//         Serial.println(F("left forward"));
+//         break;
+//       case 4:
+//         changeMovementState(SHARPTURNING);
+//         Serial.println(F("sharp turn left"));
+//         break;
+//       case 5:
+//         stop();
+//         Serial.println(F("Panic stop"));
+//         break;
+//       case 6:
+//         lastTurnDirection = RIGHT;
+//         rotate(180, true);
+//         Serial.println(F("right forward"));
+//         break;
+//       case 7:
+//         sharpturn();
+//         break;
+//     }
+//     this->CurrentLineSensorState = NewSensorState;
+//   }
+// }
+
+
+// Line follower via PID
+
+
+// reset des coefficients du PID
 
 uint8_t Robot::getSensorState() {
   uint8_t sensorState = 0;
@@ -320,77 +390,6 @@ uint8_t Robot::getSensorState() {
   return sensorState;
 }
 
-// Line follower via switch case est appelé
-void Robot::line_follower() {
-  uint8_t NewSensorState = getSensorState();
-  /*
-     * According to the 8 different states of the 3 sensor inputs, we perform the following actions:
-     * 0 - All sensors are white or not connected -> stop 
-     * 1 - Only left sensor is black -> Sharp turn left
-     * 2 - Only mid sensor is black -> forward 
-     * 3 - Mid and left sensor are black -> left forward
-     * 4 - Only right sensor is black -> Sharp turn right
-     * 5 - Left and right sensor black -> panic stop
-     * 6 - right and mid sensor are black-> right forward
-     * 7 - All sensors are black  -> stop or go backward after turn
-     */
-  /*
-     * If sensor input does not change, we do not need to change movement!
-     */
-  if (this->CurrentLineSensorState != NewSensorState) {
-    printState();
-    Serial.print(F("SensorState="));
-    Serial.print(NewSensorState);
-    Serial.print(F(" -> "));
-    switch (NewSensorState) {
-      case 0:
-        stop();
-        Serial.println(F("Stop"));
-        break;
-      case 1:
-        changeMovementState(SHARPTURNING);
-        Serial.println(F("sharp turn left"));
-        break;
-      case 2:
-        set_robot_speed(this->base_speed);
-        Serial.println(F("Forward"));
-        break;
-      case 3:
-        lastTurnDirection = LEFT;
-        rotate(-180, true);
-        Serial.println(F("left forward"));
-        break;
-      case 4:
-        changeMovementState(SHARPTURNING);
-        Serial.println(F("sharp turn left"));
-        break;
-      case 5:
-        stop();
-        Serial.println(F("Panic stop"));
-        break;
-      case 6:
-        lastTurnDirection = RIGHT;
-        rotate(180, true);
-        Serial.println(F("right forward"));
-        break;
-      case 7:
-        sharpturn();
-        break;
-    }
-    this->CurrentLineSensorState = NewSensorState;
-  }
-}
-
-void Robot::sharpturn() {
-  Serial.println("last direction: " + String(lastTurnDirection));
-  uint8_t sensorstate = getSensorState();
-  if (sensorstate != 1) {
-    rotate((lastTurnDirection == RIGHT) ? 5 : -5);
-  } else if (sensorstate == 1) {
-    changeMovementState(LINEFOLLOWING);
-  }
-}
-// reset des coefficients du PID
 void Robot::resetPID() {
   pidIntegral = 0.0;
   pidLastError = 0.0;
@@ -398,48 +397,116 @@ void Robot::resetPID() {
   // Serial.println("pid factor: " + String(pidIntegral) + String(pidLastError) + String(pidLastTime));
 }
 
-// Line follower via PID
+float Robot::errorestimation(){
+  // Flag de calibration à gérer globalement ou via un paramètre
+  bool calibration = true;  
+  uint8_t sensorState = getSensorState();
+  float error = 0.0;  // Valeur par défaut
+
+  switch(sensorState) {
+    case 0: // 000 : Aucun capteur ne détecte la ligne
+      if(!calibration){
+         changeMovementState(SHARPTURNING);
+      } else {
+         // En mode calibration, on peut par exemple assigner une valeur neutre
+         error = 0;
+      }
+      break;
+      
+    case 1: // 001 : Seul le capteur gauche détecte la ligne
+      error = -1;
+      break;
+      
+    case 2: // 010 : Seul le capteur central détecte la ligne
+      error = 0;
+      break;
+      
+    case 3: // 011 : Gauche et centre
+      error = -0.5;
+      break;
+      
+    case 4: // 100 : Seul le capteur droit détecte la ligne
+      error = 1;
+      break;
+      
+    case 5: // 101 : Cas critique : pas censé arriver
+      // On peut décider de déclencher une récupération ou assigner une valeur extrême
+      error = -0.75; // Par exemple
+      break;
+      
+    case 6: // 110 : Droite et centre 
+      error = 0.5;
+      break;
+      
+    case 7: // 111 : Tous les capteurs détectent la ligne, situation ambiguë (peut-être un carrefour)
+      if(!calibration){
+         changeMovementState(SHARPTURNING);
+      } else {
+         // En mode calibration, on peut par exemple assigner une valeur neutre
+         error = 0;
+      }
+      break;
+    default:
+      error = 0;
+      break;
+  }
+  return error;
+}
+
 void Robot::line_follower_pid() {
+  bool calibration = true;
   // Lecture des capteurs individuels
   int leftVal = digitalRead(LINE_FOLLOWER_LEFT_PIN);  // 1 si ligne détectée, 0 sinon
   int midVal = digitalRead(LINE_FOLLOWER_MID_PIN);
   int rightVal = digitalRead(LINE_FOLLOWER_RIGHT_PIN);
 
-  // Calcul de l'erreur en fonction des poids
-  // Ici, on suppose que HIGH (1) signifie détection de la ligne.
-  // On attribue des poids : gauche = -1, centre = 0, droite = +1.
-  float error = 0.0;
-  int count = 0;
+  // // Calcul de l'erreur en fonction des poids
+  // // Ici, on suppose que HIGH (1) signifie détection de la ligne.
+  // // On attribue des poids : gauche = -1, centre = 0, droite = +1.
+  // float error = 0.0;
+  // int count = 0;
 
-  if (leftVal == HIGH) {
-    error += -1;
-    count++;
-  }
-  if (midVal == HIGH) {
-    error += 0;
-    count++;
-  }
-  if (rightVal == HIGH) {
-    error += 1;
-    count++;
-  }
+  // if (leftVal == HIGH) {
+  //   error += -1;
+  //   count++;
+  // }
+  // if (midVal == HIGH) {
+  //   error += 0;
+  //   count++;
+  // }
+  // if (rightVal == HIGH) {
+  //   error += 1;
+  //   count++;
+  // }
 
-  if (count > 0) {
-    error = error / count;
-  } else if (count == 3) {
-    return;
-  } else {
-    changeMovementState(SHARPTURNING);
-    return;
-  }
+  // if (count > 0) {
+  //   error = error / count;
+  // } else if (count == 3) {
+  //   stop();
+  //   return;
+  // } else if(!calibration){
+  //     changeMovementState(SHARPTURNING);
+  //   return;
+    
+  // } else{
+  //   error =0.0;
+  // }
+
+  //Calcul de l'erreur via le mapping
+  float error;
+  error = errorestimation();
+  lastTurnDirection = (error > 0) ? RIGHT : LEFT;
 
   // Calcul du temps écoulé
   unsigned long currentTime = millis();
   float dt;
   if (pidLastTime == 0) {
-    dt = 0.01;  // une petite valeur par défaut la première fois
+    dt = 0.01;  // Valeur par défaut pour le premier appel
   } else {
     dt = (currentTime - pidLastTime) / 1000.0;  // dt en secondes
+    // if (dt < 0.00000000000000000000001) {  // Forcer un dt minimum de 10ms
+    //     dt = 0.000000000000000000000001;
+    // }
   }
   pidLastTime = currentTime;
 
@@ -448,7 +515,6 @@ void Robot::line_follower_pid() {
   float derivative = (error - pidLastError) / dt;
   float correction = pidKp * error + pidKi * pidIntegral + pidKd * derivative;
   pidLastError = error;
-  lastTurnDirection = (error > 0) ? RIGHT : LEFT;
 
   // Calcul des vitesses pour les moteurs
   // On part d'une vitesse de base (robot_speed) et on ajuste avec la correction.
@@ -468,14 +534,24 @@ void Robot::line_follower_pid() {
   moteurD.set_speed(rightSpeed);
 
   // Debug : afficher les valeurs
-  Serial.print("Error: ");
-  Serial.print(error);
-  Serial.print(" Correction: ");
-  Serial.print(correction);
-  Serial.print(" | LeftSpeed: ");
-  Serial.print(leftSpeed);
-  Serial.print(" RightSpeed: ");
-  Serial.println(rightSpeed);
+  //   Serial.print("Error: ");
+  // Serial.print(error);
+  // Serial.print(" Correction: ");
+  // Serial.print(correction);
+  // Serial.print(" | LeftSpeed: ");
+  // Serial.print(leftSpeed);
+  // Serial.print(" RightSpeed: ");
+  // Serial.println(rightSpeed);
+}
+
+void Robot::sharpturn() {
+  Serial.println("last direction: " + String(lastTurnDirection));
+  uint8_t sensorstate = getSensorState();
+  if (sensorstate != 1) {
+    rotate((lastTurnDirection == RIGHT) ? 2 : -2);
+  } else if (sensorstate == 1) {
+    changeMovementState(LINEFOLLOWING);
+  }
 }
 
 
