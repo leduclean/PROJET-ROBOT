@@ -34,6 +34,10 @@ void Moteur::set_speed(int speed) {
     analogWrite(this->PWM_pin, this->speed);
 }
 
+int Moteur::get_speed(){
+  return this->speed;
+}
+
 void Moteur::stop_engine(){
   digitalWrite(this->pin_forward, LOW);
   digitalWrite(this->pin_backward, LOW);
