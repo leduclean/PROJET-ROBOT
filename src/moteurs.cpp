@@ -20,9 +20,6 @@ void Moteur::set_speed(int speed) {
     if (speed < 0) {
         digitalWrite(this->pin_forward, LOW);
         digitalWrite(this->pin_backward, HIGH);
-        
-        Serial.print("!!!!");
-
     } else {
         digitalWrite(this->pin_forward, HIGH);
         digitalWrite(this->pin_backward, LOW);

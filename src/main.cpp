@@ -9,7 +9,7 @@
 Robot* robot;
 
 void setup() {
-  robot = new Robot(120);
+  robot = new Robot(70);
   Serial.begin(9600);
 
 }

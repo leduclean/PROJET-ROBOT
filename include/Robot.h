@@ -31,22 +31,23 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
 
   Moteur moteurD;  // Moteur droit
   Moteur moteurG;  // Moteur gauche
+  int robot_speed;                  // Vitesse courante
+  int base_speed;
   RobotMovementState movementState; // etat de mouvement
   RobotRotationState rotationState; // etat de rotation
-  TurnDirection lastTurnDirection;
   unsigned long rotationStartTime;  // Temps de début de la rotation
   unsigned long rotationDuration;   // Durée de rotation calculée en ms
-  int robot_speed;                  // Vitesse de base
   uint8_t CurrentLineSensorState;
-  int base_speed;
+  TurnDirection lastTurnDirection;
+
 
   // pid value
-  float pidKp = 2000.0;
-  float pidKi = 0.003;
-  float pidKd = 0;
-  // float pidKp = 72.0;
-  // float pidKi = 0.00015;
-  // float pidKd = 5.0;
+  // float pidKp = 150.0;
+  // float pidKi = 0;
+  // float pidKd = 0;
+  float pidKp = 60.0;
+  float pidKi = 0.00015;
+  float pidKd = 5.0;
   float pidIntegral = 0.0;
   float pidLastError = 0.0;
   unsigned long pidLastTime = 0;
