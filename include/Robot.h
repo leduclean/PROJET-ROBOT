@@ -52,8 +52,15 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
   float pidLastError = 0.0;
   unsigned long pidLastTime = 0;
 
+  float finalKp;
+  float finalKi;
+  float finalKd;
+
+
+
 
 public:
+
   // Attribut pubic
   // Constructeur
   Robot(int base_speed);
@@ -88,6 +95,8 @@ public:
   void line_follower_pid();
   float errorestimation();
   void resetPID();
+    // autotune
+    void autoTunePID();
 
 
 

@@ -1,6 +1,8 @@
 #include "Robot.h"
 #define USE_IRREMOTE_HPP_AS_PLAIN_INCLUDE
 #include <IRremote.hpp>
+#include <PID_AutoTune_v0.h>
+
 
 #if !defined(LINE_FOLLOWER_LEFT_PIN)
 #error The LineFollower program requires that LINE_FOLLOWER_[LEFT,MID,RIGHT]_PIN are defined
@@ -522,9 +524,9 @@ void Robot::line_follower_pid() {
     dt = 0.00000000000000000000001;  // Valeur par défaut pour le premier appel
   } else {
     dt = (currentTime - pidLastTime) / 1000.0;  // dt en secondes
-    // if (dt < 0.00000000000000000000001) {  // Forcer un dt minimum de 10ms
-    //     dt = 0.000000000000000000000001;
-    // }
+    if (dt < 0.0001) {  // Forcer un dt minimum de 10ms
+        dt = 0.0001;
+    }
   }
   pidLastTime = currentTime;
 
@@ -577,6 +579,57 @@ void Robot::sharpturn() {
 }
 
 
-// (Ici vous pouvez ajouter d'autres fonctions, par exemple pour le détecteur d'objet)
-
-// approche hybride
+void Robot::autoTunePID() {
+  // Variables locales pour l'autotuning
+  double pidInput = 0;   // Valeur issue de l'estimation d'erreur
+  double pidOutput = 0;  // Correction calculée par l'auto-tuner
+  
+  // Crée une instance locale du tuner, qui travaillera sur pidInput et pidOutput.
+  PID_ATune tuner(&pidInput, &pidOutput);
+  
+  // Configuration du tuner PID
+  tuner.SetNoiseBand(0.05);     // Ajustez la bande de bruit en fonction de vos capteurs
+  tuner.SetOutputStep(3);      // Amplitude de perturbation appliquée aux moteurs
+  tuner.SetLookbackSec(2);     // Durée d'analyse (en secondes)
+  tuner.SetControlType(1);     // 1 = contrôle PID standard
+  
+  bool tuning = true;
+  
+  Serial.println("Démarrage de l'auto-tuning PID...");
+  
+  // Boucle d'auto-tuning
+  while (tuning) {
+    // Met à jour l'entrée PID avec l'erreur actuelle calculée par votre méthode
+    pidInput = this->errorestimation();
+    
+    // Exécute une étape d'auto-tuning
+    int tuningStatus = tuner.Runtime();
+    
+    // Pendant le tuning, applique la sortie (pidOutput) aux moteurs.
+    // Ici, on ajuste temporairement la vitesse des moteurs en fonction du pidOutput.
+    int motorSpeed = base_speed + (int)pidOutput;  // base_speed étant la vitesse de base de votre robot
+    moteurG.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
+    moteurD.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
+    
+    // Si tuningStatus n'est pas zéro, le processus est terminé.
+    if (tuningStatus != 0) {
+      tuning = false;
+    }
+    
+    delay(10); // Petit délai pour laisser le temps aux mesures
+  }
+  
+  // Une fois l'auto-tuning terminé, récupérez les valeurs optimales :
+  finalKp = tuner.GetKp();
+  finalKi = tuner.GetKi();
+  finalKd = tuner.GetKd();
+  
+  
+  Serial.println("Auto-tuning terminé !");
+  Serial.print("Kp = ");
+  Serial.println(finalKp);
+  Serial.print("Ki = ");
+  Serial.println(finalKi);
+  Serial.print("Kd = ");
+  Serial.println(finalKd);
+}
