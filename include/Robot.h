@@ -3,6 +3,7 @@
 #include "moteurs.h"
 #include "ROBOT_CONFIG.h"
 #include <Arduino.h>
+#include <PID_v1.h>
 
 
 
@@ -41,23 +42,22 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
   TurnDirection lastTurnDirection;
 
 
-  // pid value
-  // float pidKp = 150.0;
+
+  // float pidKp = 37.0;
   // float pidKi = 0;
   // float pidKd = 0;
-  float pidKp = 60.0;
-  float pidKi = 0.00015;
-  float pidKd = 5.0;
-  float pidIntegral = 0.0;
-  float pidLastError = 0.0;
-  unsigned long pidLastTime = 0;
 
-  float finalKp;
-  float finalKi;
-  float finalKd;
+  double pid_input;    // la variable qui recevra l'erreur
+  double pid_output;   // la correction calculée par le PID
+  double pid_setpoint; // la consigne (souvent 0 pour une erreur nulle)
+  PID pidController;   // l'objet PID
 
+  // Les coefficients PID
+  double pidKp;
+  double pidKi;
+  double pidKd;
 
-
+  unsigned long lastComputeTime = 0;  // Variable globale
 
 public:
 

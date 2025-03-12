@@ -1,7 +1,7 @@
 #include "Robot.h"
 #define USE_IRREMOTE_HPP_AS_PLAIN_INCLUDE
 #include <IRremote.hpp>
-#include <PID_AutoTune_v0.h>
+#include <PID_v1.h>
 
 
 #if !defined(LINE_FOLLOWER_LEFT_PIN)
@@ -13,19 +13,33 @@
 // ===========================================
 
 Robot::Robot(int base_speed)
-  :moteurD(base_speed, MOTOR_RIGHT_FORWARD_PIN, MOTOR_RIGHT_BACKWARD_PIN, MOTOR_RIGHT_SPEED_PIN, 0.94),
-   moteurG(base_speed, MOTOR_LEFT_FORWARD_PIN, MOTOR_LEFT_BACKWARD_PIN, MOTOR_LEFT_SPEED_PIN, 1),
-   robot_speed(base_speed),
-    base_speed(base_speed),
-    movementState(MOVEMENT_IDLE),
-    rotationState(ROTATION_IDLE),
-    rotationStartTime(0),
-    rotationDuration(0),
-    CurrentLineSensorState(0),
-    lastTurnDirection(NONE)
-    {
+    : moteurD(base_speed, MOTOR_RIGHT_FORWARD_PIN, MOTOR_RIGHT_BACKWARD_PIN, MOTOR_RIGHT_SPEED_PIN, 0.94),
+      moteurG(base_speed, MOTOR_LEFT_FORWARD_PIN, MOTOR_LEFT_BACKWARD_PIN, MOTOR_LEFT_SPEED_PIN, 1),
+      robot_speed(base_speed),
+      base_speed(base_speed),
+      movementState(MOVEMENT_IDLE),
+      rotationState(ROTATION_IDLE),
+      rotationStartTime(0),
+      rotationDuration(0),
+      CurrentLineSensorState(0),
+      lastTurnDirection(NONE),
+      // Coefficients initiaux (à ajuster)
+      pidKp(30.0),
+      pidKi(0),
+      pidKd(0),
+      // Initialisation des variables du PID
+      pid_input(0),
+      pid_output(0),
+      pid_setpoint(0),
+      // Construction de l'objet PID. Note : PID_v1 attend des pointeurs sur les variables.
+      pidController(&pid_input, &pid_output, &pid_setpoint, pidKp, pidKi, pidKd, DIRECT)
+{
   initialize_ir();
   initialize_line_pin();
+    // Configuration du PID
+    pid_setpoint = 0;         // On cherche à avoir une erreur nulle
+    pidController.SetSampleTime(10); // 45 ms entre chaque calcul du PID
+    pidController.SetMode(AUTOMATIC);
 }
 
 // Fonction d'initialisation
@@ -415,46 +429,40 @@ uint8_t Robot::getSensorState() {
 }
 
 void Robot::resetPID() {
-  pidIntegral = 0.0;
-  pidLastError = 0.0;
-  pidLastTime = 0;
-  // Serial.println("pid factor: " + String(pidIntegral) + String(pidLastError) + String(pidLastTime));
+  // Passe en mode MANUAL pour "vider" l'historique interne
+  pidController.SetMode(MANUAL);
+  // Réinitialise les variables d'entrée, de sortie et de consigne si nécessaire
+  pid_input = 0;
+  pid_output = 0;
+  pid_setpoint = 0;
+  // Repasse en mode AUTOMATIC pour reprendre le calcul PID
+  pidController.SetMode(AUTOMATIC);
 }
 
-float Robot::errorestimation(){
-  // Flag de calibration à gérer globalement ou via un paramètre
+
+float Robot::errorestimation() {
+  static float previousError = 0.0;
+  static constexpr float errorTable[8] = {0.0, -1.7, 0.0, -1.2, 1.7, -0.7, 1.2, 0.0};  
   bool calibration = true;  
-  // Lecture des capteurs individuels
-  int leftVal = digitalRead(LINE_FOLLOWER_LEFT_PIN);  // 1 si ligne détectée, 0 sinon
-  int midVal = digitalRead(LINE_FOLLOWER_MID_PIN);
-  int rightVal = digitalRead(LINE_FOLLOWER_RIGHT_PIN);
 
-  // Calcul de l'erreur en fonction des poids
-  // Ici, on suppose que HIGH (1) signifie détection de la ligne.
-  // On attribue des poids : gauche = -1, centre = 0, droite = +1.
-  float error = 0.0;
-  int count = 0;
+  // Lire PIND et extraire les bits D4, D3, D2
+  uint8_t sensorState = ((PIND & 0b00001100) >> 2) | ((PIND & 0b00010000) >> 2);
 
-  if (leftVal == HIGH) {
-    error += -1;
-    count++;
+  float error = errorTable[sensorState];
+  error = (previousError + error) / 2.0;
+  previousError = error;
+  // Gestion des cas spéciaux
+  if (!calibration && sensorState == 0) {
+      changeMovementState(SHARPTURNING);
   }
-  if (midVal == HIGH) {
-    error += 0;
-    count++;
-  }
-  if (rightVal == HIGH) {
-    error += 1;
-    count++;
-  }
-  Serial.println(count);
-  if (count > 0) {
-    error = error/count;
-    return error;
-  } else if(!calibration && count == 0){
-    changeMovementState(SHARPTURNING);
-    return 0;    
-  } 
+
+  return error;
+}
+
+
+
+
+
     //Calcul de l'erreur via le mapping a priori moins efficace 
 
   // uint8_t sensorState = getSensorState();
@@ -509,127 +517,98 @@ float Robot::errorestimation(){
   //     error = 0;
   //     break;
   // }
-  return 0;
-}
+
 
 void Robot::line_follower_pid() {
-  float error;
-  error = errorestimation();
-  lastTurnDirection = (error > 0) ? RIGHT : LEFT;
+    // Récupérer l'erreur estimée à partir des capteurs
+    pid_input = errorestimation();
 
-  // Calcul du temps écoulé
-  unsigned long currentTime = millis();
-  float dt;
-  if (pidLastTime == 0) {
-    dt = 0.00000000000000000000001;  // Valeur par défaut pour le premier appel
-  } else {
-    dt = (currentTime - pidLastTime) / 1000.0;  // dt en secondes
-    if (dt < 0.0001) {  // Forcer un dt minimum de 10ms
-        dt = 0.0001;
-    }
-  }
-  pidLastTime = currentTime;
+    // Calcul du PID : le résultat sera stocké dans pid_output
+    pidController.Compute();
 
-  // Calcul PID
-  pidIntegral += error * dt;
-  float derivative = (error - pidLastError) / dt;
-  float correction = pidKp * error + pidKi * pidIntegral + pidKd * derivative;
-  pidLastError = error;
+    // Calcul des vitesses pour les moteurs en fonction de la correction
+    float correction = pid_output;
+    int leftSpeed = robot_speed + correction;
+    int rightSpeed = robot_speed - correction;
 
-  // Calcul des vitesses pour les moteurs
-  // On part d'une vitesse de base (robot_speed) et on ajuste avec la correction.
-  // Par exemple, augmenter la vitesse du moteur gauche et diminuer celle du moteur droit si correction positive.
-  int leftSpeed = robot_speed + correction;
-  int rightSpeed = robot_speed - correction;
+    // Contraintes sur les vitesses
+    leftSpeed = constrain(leftSpeed, 0, ROBOT_MAX_SPEED);
+    rightSpeed = constrain(rightSpeed, 0, ROBOT_MAX_SPEED);
 
-  // On s'assure que les vitesses restent dans les limites
-  if (leftSpeed > ROBOT_MAX_SPEED) leftSpeed = ROBOT_MAX_SPEED;
-  if (rightSpeed > ROBOT_MAX_SPEED) rightSpeed = ROBOT_MAX_SPEED;
-  if (leftSpeed < 0) leftSpeed = 0;
-  if (rightSpeed < 0) rightSpeed = 0;
+    // Appliquer les vitesses aux moteurs
+    moteurG.set_speed(leftSpeed);
+    moteurD.set_speed(rightSpeed);
 
-  // Appliquer les vitesses aux moteurs
-  // On suppose ici que set_speed() gère la direction correctement (les valeurs positives entraînent l'avance)
-  moteurG.set_speed(leftSpeed);
-  moteurD.set_speed(rightSpeed);
-
-  // Debug : afficher les valeurs
-  //   Serial.print("Error: ");
-  // Serial.print(error);
-  // Serial.print(" Correction: ");
-  // Serial.print(correction);
-  // Serial.print(" | LeftSpeed: ");
-  // Serial.print(leftSpeed);
-  // Serial.print(" RightSpeed: ");
-  // Serial.println(rightSpeed);
 }
 
+
+
+
 void Robot::sharpturn() {
-  // Vérifier si le capteur central détecte la ligne
-  if (digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH) {
-    // On peut envisager de vérifier sur plusieurs cycles pour plus de stabilité
+  // Vérifier si au moins un capteur détecte la ligne
+  if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == HIGH ||
+      digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH ||
+      digitalRead(LINE_FOLLOWER_RIGHT_PIN) == HIGH) {
+    // Un capteur détecte la ligne, on passe en mode LINEFOLLOWING
     resetPID();
-    set_robot_speed(base_speed);
+    set_robot_speed(base_speed);  // Réinitialise la vitesse à la valeur de base
     changeMovementState(LINEFOLLOWING);
+    return;
   } else {
     // Sinon, continuer à tourner par petits incréments
-    // L'incrément (ici 20°) peut être ajusté en fonction de la réactivité souhaitée
     rotate((lastTurnDirection == RIGHT) ? 10 : -10);
   }
 }
 
-
-void Robot::autoTunePID() {
-  // Variables locales pour l'autotuning
-  double pidInput = 0;   // Valeur issue de l'estimation d'erreur
-  double pidOutput = 0;  // Correction calculée par l'auto-tuner
+// void Robot::autoTunePID() {
+//   // Variables locales pour l'autotuning
+//   double pidInput = 0;   // Valeur issue de l'estimation d'erreur
+//   double pidOutput = 0;  // Correction calculée par l'auto-tuner
   
-  // Crée une instance locale du tuner, qui travaillera sur pidInput et pidOutput.
-  PID_ATune tuner(&pidInput, &pidOutput);
+//   // Crée une instance locale du tuner, qui travaillera sur pidInput et pidOutput.
+//   PID_ATune tuner(&pidInput, &pidOutput);
   
-  // Configuration du tuner PID
-  tuner.SetNoiseBand(0.05);     // Ajustez la bande de bruit en fonction de vos capteurs
-  tuner.SetOutputStep(3);      // Amplitude de perturbation appliquée aux moteurs
-  tuner.SetLookbackSec(2);     // Durée d'analyse (en secondes)
-  tuner.SetControlType(1);     // 1 = contrôle PID standard
+//   // Configuration du tuner PID
+//   tuner.SetNoiseBand(0);     // Ajustez la bande de bruit en fonction de vos capteurs
+//   tuner.SetOutputStep(10);      // Amplitude de perturbation appliquée aux moteurs
+//   tuner.SetLookbackSec(2);     // Durée d'analyse (en secondes)
+//   tuner.SetControlType(1);     // 1 = contrôle PID standard
   
-  bool tuning = true;
+//   bool tuning = true;
   
-  Serial.println("Démarrage de l'auto-tuning PID...");
+//   Serial.println("Démarrage de l'auto-tuning PID...");
   
-  // Boucle d'auto-tuning
-  while (tuning) {
-    // Met à jour l'entrée PID avec l'erreur actuelle calculée par votre méthode
-    pidInput = this->errorestimation();
+//   // Boucle d'auto-tuning
+//   while (tuning) {
+//     // Met à jour l'entrée PID avec l'erreur actuelle calculée par votre méthode
+//     pidInput = this->errorestimation();
+//     // Exécute une étape d'auto-tuning
+//     int tuningStatus = tuner.Runtime();
     
-    // Exécute une étape d'auto-tuning
-    int tuningStatus = tuner.Runtime();
+//     // Pendant le tuning, applique la sortie (pidOutput) aux moteurs.
+//     // Ici, on ajuste temporairement la vitesse des moteurs en fonction du pidOutput.
+//     int motorSpeed = 50 + (int)pidOutput;  // base_speed étant la vitesse de base de votre robot
+//     moteurG.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
+//     moteurD.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
     
-    // Pendant le tuning, applique la sortie (pidOutput) aux moteurs.
-    // Ici, on ajuste temporairement la vitesse des moteurs en fonction du pidOutput.
-    int motorSpeed = base_speed + (int)pidOutput;  // base_speed étant la vitesse de base de votre robot
-    moteurG.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
-    moteurD.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
+//     // Si tuningStatus n'est pas zéro, le processus est terminé.
+//     if (tuningStatus != 0) {
+//       tuning = false;
+//     }
     
-    // Si tuningStatus n'est pas zéro, le processus est terminé.
-    if (tuningStatus != 0) {
-      tuning = false;
-    }
-    
-    delay(10); // Petit délai pour laisser le temps aux mesures
-  }
+//   }
   
-  // Une fois l'auto-tuning terminé, récupérez les valeurs optimales :
-  finalKp = tuner.GetKp();
-  finalKi = tuner.GetKi();
-  finalKd = tuner.GetKd();
+//   // Une fois l'auto-tuning terminé, récupérez les valeurs optimales :
+//   finalKp = tuner.GetKp();
+//   finalKi = tuner.GetKi();
+//   finalKd = tuner.GetKd();
   
   
-  Serial.println("Auto-tuning terminé !");
-  Serial.print("Kp = ");
-  Serial.println(finalKp);
-  Serial.print("Ki = ");
-  Serial.println(finalKi);
-  Serial.print("Kd = ");
-  Serial.println(finalKd);
-}
+//   Serial.println("Auto-tuning terminé !");
+//   Serial.print("Kp = ");
+//   Serial.println(finalKp);
+//   Serial.print("Ki = ");
+//   Serial.println(finalKi);
+//   Serial.print("Kd = ");
+//   Serial.println(finalKd);
+// }
