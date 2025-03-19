@@ -5,6 +5,12 @@
 #include <Arduino.h>
 #include <PID_v1.h>
 
+// ---------------------- Constantes de vitesse ---------------------- //
+
+#define ROBOT_ACCELERATION_INCREMENT 20   // Incrément de vitesse lors de l’accélération
+#define ROBOT_MAX_SPEED    250 // Vitesse maximale du robot
+#define ROBOT_MIN_SPEED    70 // vitesse minimale 
+
 
 
 
@@ -26,7 +32,8 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
     LEFT = 0xBB44FF00,      // <<
     DEMITOUR = 0xE916FF00,  // 0
     EIGHT = 0xBB44FF00,
-    LINEFOLLOWER = 0xF609FF00
+    LINEFOLLOWER = 0xF609FF00,
+    INCREASEKP = 0xE619FF00,
 
   };
 
@@ -56,8 +63,9 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
   double pidKp;
   double pidKi;
   double pidKd;
+  float Ku = 90;
 
-  unsigned long lastComputeTime = 0;  // Variable globale
+  bool measurementDone = false;        // Flag indiquant que la mesure est terminée
 
 public:
 
@@ -87,19 +95,16 @@ public:
   // Méthodes pour les capteurs
   void initialize_ir();
   void decode_ir();
+  // line follower 
   void initialize_line_pin();
-  // Line follower 
-  uint8_t getSensorState();
-  void line_follower();
   void sharpturn();
   void line_follower_pid();
   float errorestimation();
   void resetPID();
     // autotune
-    void autoTunePID();
-
-
-
+    unsigned long measureOscillationPeriod();
+    void updatetuning();
+    void brake();
 
 
 };

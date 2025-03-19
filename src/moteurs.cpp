@@ -14,21 +14,21 @@ Moteur::Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float 
 
 // Gere la vitesse du robot et la direction: si positif: avant, si négatif: arriere
 void Moteur::set_speed(int speed) {
-    this->speed = abs(speed) * this->correction; // Toujours travailler avec la valeur absolue pour PWM
-
-    // Détermine la direction en fonction du signe de speed
-    if (speed < 0) {
-        digitalWrite(this->pin_forward, LOW);
-        digitalWrite(this->pin_backward, HIGH);
-    } else {
-        digitalWrite(this->pin_forward, HIGH);
-        digitalWrite(this->pin_backward, LOW);
-
-    }
-
-
-    // Applique la vitesse corrigée
-    analogWrite(this->PWM_pin, this->speed);
+  // Calculer la vitesse corrigée (toujours positive)
+  int correctedSpeed = abs(speed) * this->correction;
+  this->speed = correctedSpeed;
+  // Déterminer la direction : -1 pour reculer, 1 pour avancer
+  int newDirection = (speed < 0) ? -1 : 1;
+  
+  // Mettre à jour les broches de direction uniquement si le signe a changé
+  if (newDirection != this->last_direction) {
+      digitalWrite(this->pin_forward, (newDirection == 1) ? HIGH : LOW);
+      digitalWrite(this->pin_backward, (newDirection == 1) ? LOW : HIGH);
+      this->last_direction = newDirection;
+  }
+  
+  // Appliquer la vitesse via le signal PWM
+  analogWrite(this->PWM_pin, correctedSpeed);
 }
 
 int Moteur::get_speed(){

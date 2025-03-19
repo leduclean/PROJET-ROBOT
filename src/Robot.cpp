@@ -24,9 +24,9 @@ Robot::Robot(int base_speed)
       CurrentLineSensorState(0),
       lastTurnDirection(NONE),
       // Coefficients initiaux (à ajuster)
-      pidKp(30.0),
-      pidKi(0),
-      pidKd(0),
+      pidKp(40),
+      pidKi(80),
+      pidKd(35),
       // Initialisation des variables du PID
       pid_input(0),
       pid_output(0),
@@ -39,6 +39,7 @@ Robot::Robot(int base_speed)
     // Configuration du PID
     pid_setpoint = 0;         // On cherche à avoir une erreur nulle
     pidController.SetSampleTime(10); // 45 ms entre chaque calcul du PID
+    pidController.SetOutputLimits(-250, 250);
     pidController.SetMode(AUTOMATIC);
 }
 
@@ -287,15 +288,13 @@ void Robot::decode_ir() {
 
   if (IrReceiver.decode()) {
     auto codeRecu = IrReceiver.decodedIRData.decodedRawData;
-
     if (millis() - last > 250) {
       on = !on;
       digitalWrite(13, on ? HIGH : LOW);
-
       // Conversion du code reçu en type CommandeIR
       CommandeIR commande = static_cast<CommandeIR>(codeRecu);
-
-      if (movementState == LINEFOLLOWING && commande != CommandeIR::LINEFOLLOWER) {
+      if (movementState == LINEFOLLOWING && 
+        (commande != CommandeIR::LINEFOLLOWER && commande != CommandeIR::INCREASEKP)) {
         Serial.println("Commande ignorée : le robot est en mode LINE FOLLOWING.");
         IrReceiver.resume();  
         return;
@@ -337,6 +336,11 @@ void Robot::decode_ir() {
             changeMovementState(LINEFOLLOWING);
           }
           break;
+        case CommandeIR::INCREASEKP:
+          pidKp = pidKd + 10;
+          pidController.SetTunings(pidKp + 10, 0, 0);
+
+          break;
         default:
           Serial.println("Commande inconnue !");
           break;
@@ -349,84 +353,7 @@ void Robot::decode_ir() {
   }
 }
 
-// LINE FOLLOWER via switch case : moins fluide (donc non recommandée)
 
-
-
-// // Line follower via switch case est appelé
-// void Robot::line_follower() {
-//   uint8_t NewSensorState = getSensorState();
-//   /*
-//      * According to the 8 different states of the 3 sensor inputs, we perform the following actions:
-//      * 0 - All sensors are white or not connected -> stop 
-//      * 1 - Only left sensor is black -> Sharp turn left
-//      * 2 - Only mid sensor is black -> forward 
-//      * 3 - Mid and left sensor are black -> left forward
-//      * 4 - Only right sensor is black -> Sharp turn right
-//      * 5 - Left and right sensor black -> panic stop
-//      * 6 - right and mid sensor are black-> right forward
-//      * 7 - All sensors are black  -> stop or go backward after turn
-//      */
-//   /*
-//      * If sensor input does not change, we do not need to change movement!
-//      */
-//   if (this->CurrentLineSensorState != NewSensorState) {
-//     printState();
-//     Serial.print(F("SensorState="));
-//     Serial.print(NewSensorState);
-//     Serial.print(F(" -> "));
-//     switch (NewSensorState) {
-//       case 0:
-//         stop();
-//         Serial.println(F("Stop"));
-//         break;
-//       case 1:
-//         changeMovementState(SHARPTURNING);
-//         Serial.println(F("sharp turn left"));
-//         break;
-//       case 2:
-//         set_robot_speed(this->base_speed);
-//         Serial.println(F("Forward"));
-//         break;
-//       case 3:
-//         lastTurnDirection = LEFT;
-//         rotate(-180, true);
-//         Serial.println(F("left forward"));
-//         break;
-//       case 4:
-//         changeMovementState(SHARPTURNING);
-//         Serial.println(F("sharp turn left"));
-//         break;
-//       case 5:
-//         stop();
-//         Serial.println(F("Panic stop"));
-//         break;
-//       case 6:
-//         lastTurnDirection = RIGHT;
-//         rotate(180, true);
-//         Serial.println(F("right forward"));
-//         break;
-//       case 7:
-//         sharpturn();
-//         break;
-//     }
-//     this->CurrentLineSensorState = NewSensorState;
-//   }
-// }
-
-
-// Line follower via PID
-
-
-// reset des coefficients du PID
-
-uint8_t Robot::getSensorState() {
-  uint8_t sensorState = 0;
-  if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == HIGH) sensorState = 1;   // bit 0
-  if (digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH) sensorState |= 2;    // bit 1
-  if (digitalRead(LINE_FOLLOWER_RIGHT_PIN) == HIGH) sensorState |= 4;  // bit 2
-  return sensorState;
-}
 
 void Robot::resetPID() {
   // Passe en mode MANUAL pour "vider" l'historique interne
@@ -441,19 +368,42 @@ void Robot::resetPID() {
 
 
 float Robot::errorestimation() {
-  static float previousError = 0.0;
-  static constexpr float errorTable[8] = {0.0, -1.7, 0.0, -1.2, 1.7, -0.7, 1.2, 0.0};  
-  bool calibration = true;  
+  static constexpr float errorTable[8] = {
+    5.0,   // 000 : aucun capteur actif
+    0.0,   // 001 : centre seul
+    1.7,   // 010 : droit seul
+    1.2,   // 011 : centre et droit
+    -1.7,  // 100 : gauche seul
+    -1.2,  // 101 : gauche et centre
+    0.0,   // 110 : gauche et droit
+    0.0,  // 111 : tous actifs
+  };
+  bool calibration = false;  
 
-  // Lire PIND et extraire les bits D4, D3, D2
-  uint8_t sensorState = ((PIND & 0b00001100) >> 2) | ((PIND & 0b00010000) >> 2);
+  // Lire PIND et extraire les bits correspondant aux capteurs :
+  // - capteur du milieu (D2) -> bit 0
+  // - capteur droit   (D3) -> bit 1
+  // - capteur gauche  (D4) -> bit 2
+  uint8_t sensorState = (((PIND >> 4) & 0x01) << 2) | 
+                        (((PIND >> 3) & 0x01) << 1) | 
+                        ((PIND >> 2) & 0x01);
 
   float error = errorTable[sensorState];
-  error = (previousError + error) / 2.0;
-  previousError = error;
-  // Gestion des cas spéciaux
-  if (!calibration && sensorState == 0) {
-      changeMovementState(SHARPTURNING);
+
+  // Compteur statique pour vérifier les cycles consécutifs avec aucun capteur actif
+  static unsigned int sharpturncount = 0;
+  const unsigned int threshold = 130; // nombre de cycles à atteindre avant de déclencher le sharp turning
+
+  if (error == 5) {
+    sharpturncount++;
+  } else {
+    sharpturncount = 0; // Réinitialise si un capteur détecte la ligne
+  }
+
+  // Déclenchement du comportement SHARPTURNING si aucun capteur actif pendant plusieurs cycles
+  if (!calibration && sharpturncount >= threshold) {
+    changeMovementState(SHARPTURNING);
+    sharpturncount = 0;  // Optionnel : réinitialiser le compteur après changement d'état
   }
 
   return error;
@@ -463,83 +413,64 @@ float Robot::errorestimation() {
 
 
 
-    //Calcul de l'erreur via le mapping a priori moins efficace 
-
-  // uint8_t sensorState = getSensorState();
-  // Serial.println(sensorState);
-  // float error = 0.0;  // Valeur par défaut
-
-  // switch(sensorState) {
-  //   case 0: // 000 : Aucun capteur ne détecte la ligne
-  //     if(!calibration){
-  //        changeMovementState(SHARPTURNING);
-  //     } else {
-  //        // En mode calibration, on peut par exemple assigner une valeur neutre
-  //        error = 0;
-  //     }
-  //     break;
-      
-  //   case 1: // 001 : Seul le capteur gauche détecte la ligne
-  //     error = -1.7;
-  //     break;
-      
-  //   case 2: // 010 : Seul le capteur central détecte la ligne
-  //     error = 0;
-  //     break;
-      
-  //   case 3: // 011 : Gauche et centre
-  //     error = -1.2;
-  //     break;
-      
-  //   case 4: // 100 : Seul le capteur droit détecte la ligne
-  //     error = 1.7;
-  //     Serial.println("FFFFFFFFFFF");
-  //     break;
-      
-  //   case 5: // 101 : Cas critique : pas censé arriver
-  //     // On peut décider de déclencher une récupération ou assigner une valeur extrême
-  //     error = -0.7; // Par exemple
-  //     break;
-      
-  //   case 6: // 110 : Droite et centre 
-  //     error = 1.2;
-  //     break;
-      
-  //   case 7: // 111 : Tous les capteurs détectent la ligne, situation ambiguë (peut-être un carrefour)
-  //     if(!calibration){
-  //        changeMovementState(SHARPTURNING);
-  //     } else {
-  //        // En mode calibration, on peut par exemple assigner une valeur neutre
-  //        error = 0;
-  //     }
-  //     break;
-  //   default:
-  //     error = 0;
-  //     break;
-  // }
-
-
 void Robot::line_follower_pid() {
-    // Récupérer l'erreur estimée à partir des capteurs
-    pid_input = errorestimation();
-
-    // Calcul du PID : le résultat sera stocké dans pid_output
-    pidController.Compute();
-
-    // Calcul des vitesses pour les moteurs en fonction de la correction
-    float correction = pid_output;
-    int leftSpeed = robot_speed + correction;
-    int rightSpeed = robot_speed - correction;
-
-    // Contraintes sur les vitesses
-    leftSpeed = constrain(leftSpeed, 0, ROBOT_MAX_SPEED);
-    rightSpeed = constrain(rightSpeed, 0, ROBOT_MAX_SPEED);
-
-    // Appliquer les vitesses aux moteurs
-    moteurG.set_speed(leftSpeed);
-    moteurD.set_speed(rightSpeed);
-
+  // Récupérer l'erreur estimée
+  pid_input = errorestimation();
+  
+  // Calcul du PID (la sortie est stockée dans pid_output)
+  pidController.Compute();
+  float correction = pid_output;
+  
+  // Déterminer la magnitude de l'erreur
+  float errorMagnitude = fabs(pid_input);
+  
+  // Vitesse de base par défaut
+  int baseSpeed = robot_speed;
+  float speedFactor = 1.0;
+  
+  // Paramètres pour la modulation de vitesse
+  const float threshold = 1.3;      // Seuil à partir duquel on commence à envisager la réduction
+  const float maxError = 2.0;       // Erreur maximale pour laquelle le facteur atteint son minimum
+  const float minSpeedFactor = 0.1; // Facteur minimal : 20% de robot_speed en cas d'erreur très importante
+  const int iterationsThreshold = 10; // Nombre d'itérations consécutives avec une erreur > threshold pour appliquer la modulation
+  
+  // Compteur statique pour les itérations consécutives avec erreur élevée
+  static int highErrorCounter = 0;
+  
+  // Incrémenter ou réinitialiser le compteur en fonction de l'erreur
+  if (errorMagnitude >= threshold) {
+      highErrorCounter++;
+  } else {
+      highErrorCounter = 0;
+  }
+  
+  // Appliquer la modulation seulement si l'erreur est élevée pendant plusieurs itérations
+  if (highErrorCounter >= iterationsThreshold) {
+    if (errorMagnitude >= maxError) {
+      speedFactor = minSpeedFactor;
+    } else {
+      // Réduction linéaire entre threshold et maxError
+      speedFactor = 1.0 - ((errorMagnitude - threshold) / (maxError - threshold)) * (1.0 - minSpeedFactor);
+    }
+    baseSpeed = (int)(robot_speed * speedFactor);
+    correction = correction * speedFactor;
+  }
+  
+  // Calcul des vitesses pour chaque moteur en soustrayant/ajoutant la correction
+  int leftSpeed = baseSpeed - correction;
+  int rightSpeed = baseSpeed + correction;
+  
+  // Contraindre les vitesses pour ne pas dépasser les limites
+  leftSpeed = constrain(leftSpeed, 0, ROBOT_MAX_SPEED);
+  rightSpeed = constrain(rightSpeed, 0, ROBOT_MAX_SPEED);
+  
+  // Appliquer les vitesses aux moteurs
+  moteurG.set_speed(leftSpeed);
+  moteurD.set_speed(rightSpeed);
 }
+
+
+
 
 
 
@@ -549,9 +480,15 @@ void Robot::sharpturn() {
   if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == HIGH ||
       digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH ||
       digitalRead(LINE_FOLLOWER_RIGHT_PIN) == HIGH) {
-    // Un capteur détecte la ligne, on passe en mode LINEFOLLOWING
-    resetPID();
-    set_robot_speed(base_speed);  // Réinitialise la vitesse à la valeur de base
+    
+    // On applique d'abord une décélération ou un freinage progressif
+    // (Remplace brake() par ta méthode de freinage, ou ajuste la vitesse)
+    brake();                // Par exemple, arrêter brièvement le robot
+    delay(100);             // Attendre un court instant pour laisser l'inertie se dissiper
+
+    // Puis on réinitialise le PID et on reprend en mode LINEFOLLOWING avec une vitesse modérée
+    resetPID();             // Réinitialise le PID
+    set_robot_speed(base_speed);  // Démarrer à une vitesse réduite
     changeMovementState(LINEFOLLOWING);
     return;
   } else {
@@ -560,55 +497,92 @@ void Robot::sharpturn() {
   }
 }
 
-// void Robot::autoTunePID() {
-//   // Variables locales pour l'autotuning
-//   double pidInput = 0;   // Valeur issue de l'estimation d'erreur
-//   double pidOutput = 0;  // Correction calculée par l'auto-tuner
-  
-//   // Crée une instance locale du tuner, qui travaillera sur pidInput et pidOutput.
-//   PID_ATune tuner(&pidInput, &pidOutput);
-  
-//   // Configuration du tuner PID
-//   tuner.SetNoiseBand(0);     // Ajustez la bande de bruit en fonction de vos capteurs
-//   tuner.SetOutputStep(10);      // Amplitude de perturbation appliquée aux moteurs
-//   tuner.SetLookbackSec(2);     // Durée d'analyse (en secondes)
-//   tuner.SetControlType(1);     // 1 = contrôle PID standard
-  
-//   bool tuning = true;
-  
-//   Serial.println("Démarrage de l'auto-tuning PID...");
-  
-//   // Boucle d'auto-tuning
-//   while (tuning) {
-//     // Met à jour l'entrée PID avec l'erreur actuelle calculée par votre méthode
-//     pidInput = this->errorestimation();
-//     // Exécute une étape d'auto-tuning
-//     int tuningStatus = tuner.Runtime();
-    
-//     // Pendant le tuning, applique la sortie (pidOutput) aux moteurs.
-//     // Ici, on ajuste temporairement la vitesse des moteurs en fonction du pidOutput.
-//     int motorSpeed = 50 + (int)pidOutput;  // base_speed étant la vitesse de base de votre robot
-//     moteurG.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
-//     moteurD.set_speed(constrain(motorSpeed, 0, ROBOT_MAX_SPEED));
-    
-//     // Si tuningStatus n'est pas zéro, le processus est terminé.
-//     if (tuningStatus != 0) {
-//       tuning = false;
-//     }
-    
-//   }
-  
-//   // Une fois l'auto-tuning terminé, récupérez les valeurs optimales :
-//   finalKp = tuner.GetKp();
-//   finalKi = tuner.GetKi();
-//   finalKd = tuner.GetKd();
-  
-  
-//   Serial.println("Auto-tuning terminé !");
-//   Serial.print("Kp = ");
-//   Serial.println(finalKp);
-//   Serial.print("Ki = ");
-//   Serial.println(finalKi);
-//   Serial.print("Kd = ");
-//   Serial.println(finalKd);
-// }
+void Robot::brake() {
+  int currentSpeed = base_speed;
+  const int decelerationStep = 25;  // Incrément plus grand pour un freinage plus agressif
+  const int brakeDelay = 5;        // Délai réduit
+
+  while (currentSpeed > 0) {
+    currentSpeed -= decelerationStep;
+    if (currentSpeed < 0) {
+      currentSpeed = 0;
+    }
+    moteurG.set_speed(currentSpeed);
+    moteurD.set_speed(currentSpeed);
+    delay(brakeDelay);
+  }
+  moteurG.set_speed(0);
+  moteurD.set_speed(0);
+}
+
+unsigned long Robot::measureOscillationPeriod() {
+  // Variables statiques pour conserver l'état entre les appels
+  static bool firstPeakDetected = false;   // Indique si le premier pic a été détecté
+  static unsigned long lastPeakTime = 0;     // Temps du dernier pic détecté
+  static float previousError = 0.0;          // Valeur d'erreur du cycle précédent
+  static bool rising = false;                // Indique si le signal est en phase ascendante
+
+  unsigned long currentTime = millis();      // Temps actuel en ms
+  float currentError = errorestimation();      // Lecture de l'erreur actuelle
+
+  // Si le signal augmente, on est en phase de montée
+  if (currentError > previousError) {
+      rising = true;
+  }
+  // Si le signal passe de la montée à la descente, on détecte un pic
+  else if (rising && currentError < previousError) {
+      if (!firstPeakDetected) {
+          // Premier pic détecté : initialisation du temps
+          firstPeakDetected = true;
+          lastPeakTime = currentTime;
+      } else {
+          // Calcul de la période entre deux pics successifs
+          unsigned long period = currentTime - lastPeakTime;
+          lastPeakTime = currentTime; // Met à jour pour la prochaine mesure
+          rising = false;             // Réinitialise l'état de montée
+          previousError = currentError;
+          measurementDone = true;
+          return period;              // Retourne la période en ms
+      }
+      rising = false; // Réinitialise l'état pour éviter plusieurs détections sur le même pic
+  }
+
+  previousError = currentError;
+  return 0; // Retourne 0 si aucune nouvelle période n'est mesurée
+}
+
+
+void Robot::updatetuning() {
+    // 1. Définir une vitesse de base pour démarrer le mouvement
+    moteurG.set_speed(this->base_speed);
+    moteurD.set_speed(this->base_speed);
+
+    // 2. Exécuter le suivi de ligne avec le PID
+    line_follower_pid();
+
+    // 3. Mesurer l'oscillation pour le réglage PID
+    unsigned long period = measureOscillationPeriod();
+    if (measurementDone) {
+      // Imprimer une seule fois le résultat
+      Serial.print("Période d'oscillation mesurée : ");
+      Serial.print(period);
+      Serial.println(" ms");
+      // Réinitialiser le flag pour éviter de réimprimer à chaque tour de boucle
+      measurementDone = false;
+  }
+    // if (period > 0) {
+    //      // Conversion de la période en secondes
+    //      float Tu = period / 1000.0;
+
+    //      // Calcul des coefficients PID avec la méthode de Ziegler-Nichols
+    //      float Kp = 0.6 * Ku;             // Ku est le gain ultime déterminé empiriquement
+    //      float Ki = 1.2 * Ku / Tu;
+    //      float Kd = 0.075 * Ku * Tu;
+
+    //      // Mise à jour des paramètres du contrôleur PID
+    //      pidController.SetTunings(Kp, Ki, Kd);
+
+    // }
+
+}
+

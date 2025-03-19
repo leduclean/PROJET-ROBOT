@@ -17,6 +17,8 @@ private:
     int pin_backward;
     int PWM_pin;
     float correction;
+    int last_direction = 0; // 0 : non initialisé, 1 : forward, -1 : backward
+
 
 public:
 
