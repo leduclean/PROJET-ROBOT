@@ -24,9 +24,9 @@ Robot::Robot(int base_speed)
       CurrentLineSensorState(0),
       lastTurnDirection(NONE),
       // Coefficients initiaux (à ajuster)
-      pidKp(40),
-      pidKi(80),
-      pidKd(35),
+      pidKp(80),
+      pidKi(0),
+      pidKd(0), // 400 ms 
       // Initialisation des variables du PID
       pid_input(0),
       pid_output(0),
@@ -38,7 +38,7 @@ Robot::Robot(int base_speed)
   initialize_line_pin();
     // Configuration du PID
     pid_setpoint = 0;         // On cherche à avoir une erreur nulle
-    pidController.SetSampleTime(10); // 45 ms entre chaque calcul du PID
+    pidController.SetSampleTime(20); // 17 ms entre chaque calcul du PID
     pidController.SetOutputLimits(-250, 250);
     pidController.SetMode(AUTOMATIC);
 }
@@ -80,16 +80,16 @@ void Robot::accel() {
   if (new_speed > ROBOT_MAX_SPEED) {
     new_speed = ROBOT_MAX_SPEED;  // Limite à la vitesse max
   }
-  set_robot_speed(new_speed);
+  set_robot_speed((movementState == BACKWARD)? - new_speed: new_speed );
 }
 
 // Décélère le robot
 void Robot::deccel() {
-  int new_speed = this->robot_speed - ROBOT_ACCELERATION_INCREMENT;  // Réduit la vitesse
-  if (new_speed < 0) {
-    new_speed = 0;  // Évite une vitesse négative
+  int new_speed = this->robot_speed - ROBOT_ACCELERATION_INCREMENT;  // Augmente la vitesse
+  if (new_speed > ROBOT_MAX_SPEED) {
+    new_speed = ROBOT_MAX_SPEED;  // Limite à la vitesse max
   }
-  set_robot_speed(new_speed);
+  set_robot_speed((movementState == BACKWARD)? - new_speed: new_speed );
 }
 
 // ===========================================
@@ -100,7 +100,7 @@ void Robot::deccel() {
 void Robot::right(bool pivot) {
   changeRotationState(TURNING);
 
-  int speedG = ROBOT_MAX_SPEED;
+  int speedG = this->robot_speed*2;
   int speedD = (pivot) ? 0 : this->robot_speed / 2;
 
   // Si le robot est en marche arrière, inverser les vitesses
@@ -122,7 +122,7 @@ void Robot::left(bool pivot) {
   changeRotationState(TURNING);
 
   int speedG = (pivot) ? 0 : this->robot_speed / 2;
-  int speedD = ROBOT_MAX_SPEED;
+  int speedD = this->robot_speed*2;
 
   if (movementState == BACKWARD) {
     speedG = -speedG;
@@ -137,8 +137,8 @@ void Robot::left(bool pivot) {
 }
 
 // Effectue une rotation avec angle spécifié
-// move indique si la rotation se fait en mouvement (avancer/reculer) et backward si c'est en marche arrière
-
+// move indique si la rotation se fait en mouvement (avancer/reculer) et backward si c'est en marche arrière/ 
+// angle: positif a droite, negatif gauche 
 void Robot::rotate(int angle, bool move, bool backward) {
   // Calculer la vitesse effective à partir des vitesses actuelles
   // On suppose que dans le mode line follower, leftSpeed et rightSpeed
@@ -156,7 +156,7 @@ void Robot::rotate(int angle, bool move, bool backward) {
   int baseRotationSpeed = (int)(robot_speed * facteurRotation);
     
   // Calculer la durée de rotation selon l'angle souhaité et une constante tempsParDegre
-  float timePerDegree = 200/90;  // par exemple, 2 ms par degré (à ajuster)
+  float timePerDegree = 800/90;  // par exemple, 2 ms par degré (à ajuster)
   rotationDuration = abs(angle) * timePerDegree;
   rotationStartTime = millis();
 
@@ -225,26 +225,77 @@ void Robot::changeRotationState(RobotRotationState newRotationState) {
 // Mise à jour (appelée dans la boucle principale)
 // ===========================================
 
-void Robot::update() {
+void Robot::update(){
   long int current_time = millis();
-  // On lit l'état des capteurs une seule fois
 
-  if (rotationState == ROTATING || rotationState == TURNING) {
-    if (current_time - rotationStartTime >= rotationDuration) {
-      // Appliquer la vitesse en fonction de l'état de déplacement
+  // Vérification d'interruption : si l'état de mouvement n'est plus FIGURE_EIGHT, stopper la rotation
+  if(movementState != FIGURE_EIGHT && rotationState != ROTATION_IDLE) {
+      // Arrêter la rotation en cours
       int appliedSpeed = (movementState == BACKWARD) ? -robot_speed : robot_speed;
       moteurG.set_speed(appliedSpeed);
       moteurD.set_speed(appliedSpeed);
-      rotationState = ROTATION_IDLE;
-    }
+      changeRotationState(ROTATION_IDLE);
+      currentEightStep = EIGHT_NONE; // Réinitialiser la séquence du 8
   }
-  if (movementState == SHARPTURNING) {
-    sharpturn();
+
+  // Gestion de l'état de rotation
+  switch (rotationState)
+  {
+      case ROTATING:
+      case TURNING:
+          if (current_time - rotationStartTime >= rotationDuration) {
+              // Rotation terminée, arrêter la rotation
+              int appliedSpeed = (movementState == BACKWARD) ? -robot_speed : robot_speed;
+              moteurG.set_speed(appliedSpeed);
+              moteurD.set_speed(appliedSpeed);
+              changeRotationState(ROTATION_IDLE);
+
+              // Si on est dans une séquence de figure en 8, passer à l'étape suivante
+              if (movementState == FIGURE_EIGHT) {
+                  if (currentEightStep == EIGHT_FIRST) {
+                      // Passer à la deuxième boucle : rotation vers la droite
+                      rotate(-390, true, false);
+                      changeRotationState(ROTATING);
+                      currentEightStep = EIGHT_SECOND;
+                  } else if (currentEightStep == EIGHT_SECOND) {
+                      // Fin de la séquence, on revient à FORWARD par exemple
+                      changeMovementState(FORWARD);
+                      currentEightStep = EIGHT_NONE;
+                  }
+              }
+          }
+          break;
+
+      default:
+          break;
   }
-  if (movementState == LINEFOLLOWING) {
-    line_follower_pid();
+
+  // Gestion de l'état de mouvement
+  switch (movementState)
+  {
+      case SHARPTURNING:
+          sharpturn();
+          break;
+      case LINEFOLLOWING:
+          line_follower_pid();
+          break;
+      case FIGURE_EIGHT:
+          // Lancer l'initiation de la séquence si ce n'est pas déjà lancé
+          if (currentEightStep == EIGHT_NONE) {
+              move_eight();
+          }
+          break;
+      case FORWARD:
+          set_robot_speed(base_speed);
+          break;
+      case BACKWARD:
+          set_robot_speed(-base_speed);
+          break;
+      default:
+          break;
   }
 }
+
 
 // ===========================================
 // Fonctions de debug
@@ -262,20 +313,14 @@ void Robot::debug() {
 
 // Exécute un mouvement en forme de "8"
 void Robot::move_eight() {
-  // Premier virage à droite
-  right();
-  delay(500);   // Temps pour le premier quart du "8"
-  delay(1000);  // Demi-boucle
-
-  // Virage à gauche
-  left();
-  delay(500);   // Deuxième quart du "8"
-  delay(1000);  // Deuxième demi-boucle
-
-  // Dernier virage à droite pour terminer le "8"
-  right();
-  delay(500);  // Dernier virage
+  // Si aucune séquence n'est en cours, on démarre la première boucle
+  if (currentEightStep == EIGHT_NONE) {
+      rotate(360, true, false);
+      changeRotationState(ROTATING);
+      currentEightStep = EIGHT_FIRST;
+  }
 }
+
 
 // ===========================================
 // Fonctions liées aux capteurs et à l'IR
@@ -288,6 +333,7 @@ void Robot::decode_ir() {
 
   if (IrReceiver.decode()) {
     auto codeRecu = IrReceiver.decodedIRData.decodedRawData;
+    Serial.println(codeRecu, HEX);
     if (millis() - last > 250) {
       on = !on;
       digitalWrite(13, on ? HIGH : LOW);
@@ -303,10 +349,10 @@ void Robot::decode_ir() {
       // Exécuter la commande correspondante
       switch (commande) {
         case CommandeIR::FORWARD:
-          set_robot_speed(this->base_speed);
+          changeMovementState(FORWARD);
           break;
         case CommandeIR::BACKWARD:
-          set_robot_speed(-this->base_speed);
+          changeMovementState(BACKWARD);
           break;
         case CommandeIR::LEFT:
           left(true);
@@ -325,6 +371,9 @@ void Robot::decode_ir() {
           break;
         case CommandeIR::DEMITOUR:
           rotate(180, false, false);
+          break;
+        case CommandeIR::EIGHT:
+          changeMovementState(FIGURE_EIGHT);
           break;
         case CommandeIR::LINEFOLLOWER:
           if (movementState == LINEFOLLOWING) {
@@ -378,7 +427,7 @@ float Robot::errorestimation() {
     0.0,   // 110 : gauche et droit
     0.0,  // 111 : tous actifs
   };
-  bool calibration = false;  
+  bool calibration = true;  
 
   // Lire PIND et extraire les bits correspondant aux capteurs :
   // - capteur du milieu (D2) -> bit 0
@@ -416,7 +465,6 @@ float Robot::errorestimation() {
 void Robot::line_follower_pid() {
   // Récupérer l'erreur estimée
   pid_input = errorestimation();
-  
   // Calcul du PID (la sortie est stockée dans pid_output)
   pidController.Compute();
   float correction = pid_output;
@@ -429,9 +477,9 @@ void Robot::line_follower_pid() {
   float speedFactor = 1.0;
   
   // Paramètres pour la modulation de vitesse
-  const float threshold = 1.3;      // Seuil à partir duquel on commence à envisager la réduction
+  const float threshold = 3;      // Seuil à partir duquel on commence à envisager la réduction
   const float maxError = 2.0;       // Erreur maximale pour laquelle le facteur atteint son minimum
-  const float minSpeedFactor = 0.1; // Facteur minimal : 20% de robot_speed en cas d'erreur très importante
+  const float minSpeedFactor = 1; // Facteur minimal : 20% de robot_speed en cas d'erreur très importante
   const int iterationsThreshold = 10; // Nombre d'itérations consécutives avec une erreur > threshold pour appliquer la modulation
   
   // Compteur statique pour les itérations consécutives avec erreur élevée
@@ -493,7 +541,7 @@ void Robot::sharpturn() {
     return;
   } else {
     // Sinon, continuer à tourner par petits incréments
-    rotate((lastTurnDirection == RIGHT) ? 10 : -10);
+    rotate((lastTurnDirection == RIGHT) ? 40 : -40);
   }
 }
 
@@ -585,4 +633,3 @@ void Robot::updatetuning() {
     // }
 
 }
-

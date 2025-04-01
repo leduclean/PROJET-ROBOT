@@ -19,8 +19,16 @@ class Robot {
 
 private:
 enum TurnDirection {NONE, RIGHT, LEFT};
-enum RobotMovementState { MOVEMENT_IDLE, FORWARD, BACKWARD, LINEFOLLOWING, SHARPTURNING};
+enum RobotMovementState { MOVEMENT_IDLE, FORWARD, BACKWARD, LINEFOLLOWING, SHARPTURNING, FIGURE_EIGHT};
 enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
+enum EightStep {
+  EIGHT_NONE,
+  EIGHT_FIRST,
+  EIGHT_SECOND
+};
+
+
+
 
     enum class CommandeIR : unsigned long {
     FORWARD = 0xB847FF00,   // CH +
@@ -31,7 +39,7 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
     RIGHT = 0xBF40FF00,     // >>
     LEFT = 0xBB44FF00,      // <<
     DEMITOUR = 0xE916FF00,  // 0
-    EIGHT = 0xBB44FF00,
+    EIGHT = 0xAD52FF00,
     LINEFOLLOWER = 0xF609FF00,
     INCREASEKP = 0xE619FF00,
 
@@ -47,6 +55,8 @@ enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
   unsigned long rotationDuration;   // Durée de rotation calculée en ms
   uint8_t CurrentLineSensorState;
   TurnDirection lastTurnDirection;
+  EightStep currentEightStep = EIGHT_NONE;
+
 
 
 
