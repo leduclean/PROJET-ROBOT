@@ -9,3 +9,6 @@ build/
 .pio/
 .vscode/
 
+
+# clang
+.clang-format
