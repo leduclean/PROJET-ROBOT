@@ -331,6 +331,7 @@ void Robot::decode_ir() {
                 event = EVENT_IR_EIGHT;
                 break;
             case CommandeIR::LINEFOLLOWER:
+                set_robot_speed(70);
                 event = EVENT_IR_LINEFOLLOWER;
                 break;
             case CommandeIR::INCREASEKP:
@@ -490,8 +491,8 @@ void Robot::line_follower_pid() {
     // Paramètres pour la modulation de vitesse
     const float threshold = 1.3;        // Seuil à partir duquel on commence à envisager la réduction
     const float maxError = 2.0;         // Erreur maximale pour laquelle le facteur atteint son minimum
-    const float minSpeedFactor = 1;     // Facteur minimal : 20% de robot_speed en cas d'erreur très importante
-    const int iterationsThreshold = 10; // Nombre d'itérations consécutives avec une erreur > threshold pour
+    const float minSpeedFactor = 0.6;     // Facteur minimal : 20% de robot_speed en cas d'erreur très importante
+    const int iterationsThreshold = 20; // Nombre d'itérations consécutives avec une erreur > threshold pour
                                         // appliquer la modulation
 
     // Compteur statique pour les itérations consécutives avec erreur élevée
@@ -534,9 +535,7 @@ void Robot::sharpturn() {
     if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == HIGH || digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH ||
         digitalRead(LINE_FOLLOWER_RIGHT_PIN) == HIGH) {
         // On applique d'abord une décélération ou un freinage progressif
-        // (Remplace brake() par ta méthode de freinage, ou ajuste la vitesse)
         brake();    // Par exemple, arrêter brièvement le robot
-        delay(100); // Attendre un court instant pour laisser l'inertie se dissiper
 
         // Puis on réinitialise le PID et on reprend en mode LINEFOLLOWING avec
         // une vitesse modérée
@@ -559,8 +558,7 @@ void Robot::sharpturn() {
 
 void Robot::brake() {
     int currentSpeed = base_speed;
-    const int decelerationStep = 25; // Incrément plus grand pour un freinage plus agressif
-    const int brakeDelay = 5;        // Délai réduit
+    const int decelerationStep = 17; // Incrément plus grand pour un freinage plus agressif
 
     while (currentSpeed > 0) {
         currentSpeed -= decelerationStep;
@@ -569,7 +567,6 @@ void Robot::brake() {
         }
         moteurG.set_speed(currentSpeed);
         moteurD.set_speed(currentSpeed);
-        delay(brakeDelay);
     }
     moteurG.set_speed(0);
     moteurD.set_speed(0);
