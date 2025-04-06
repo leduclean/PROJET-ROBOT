@@ -3,8 +3,8 @@
 #include <Arduino.h>
 
 // Constructeur avec initialisation de la speed
-Moteur::Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float correction)
-    : speed(speed), pin_forward(pin_forward), pin_backward(pin_backward), PWM_pin(PWM_pin), correction(correction) {
+Moteur::Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float correction) :
+    speed(speed), pin_forward(pin_forward), pin_backward(pin_backward), PWM_pin(PWM_pin), correction(correction) {
     // On déclare les pins associés au controle du moteur en mode sortie car on va envoyer une tension au controleur de
     // moteur
     pinMode(pin_forward, OUTPUT);
@@ -31,7 +31,9 @@ void Moteur::set_speed(int speed) {
     analogWrite(this->PWM_pin, correctedSpeed);
 }
 
-int Moteur::get_speed() { return this->speed; }
+int Moteur::get_speed() {
+    return this->speed;
+}
 
 void Moteur::stop_engine() {
     digitalWrite(this->pin_forward, LOW);

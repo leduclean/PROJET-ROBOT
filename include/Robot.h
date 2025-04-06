@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <PID_v1.h>
+
 #include "ROBOT_CONFIG.h"
 #include "moteurs.h"
 
@@ -12,25 +13,21 @@
 #define ROBOT_MIN_SPEED 70              // Vitesse minimale
 
 // ----- États de mouvement et rotation -----
-enum class GlobalState {
-    IDLE,
-    MOVING,
+enum class GlobalState { IDLE, MOVING, ROTATING };
+
+enum MovementState {
+    MOVEMENT_IDLE, // pour éviter toute confusion avec GlobalState::IDLE
+    FORWARD,
+    BACKWARD,
+    LINEFOLLOWING,
+    SHARPTURNING,
+    FIGURE_EIGHT
+};
+
+enum RotationState {
+    ROTATION_IDLE, // à utiliser au lieu de NONE pour plus de clarté
+    TURNING,
     ROTATING
-};
-
-enum MovementState { 
-    MOVEMENT_IDLE,   // pour éviter toute confusion avec GlobalState::IDLE
-    FORWARD, 
-    BACKWARD, 
-    LINEFOLLOWING, 
-    SHARPTURNING, 
-    FIGURE_EIGHT 
-};
-
-enum RotationState { 
-    ROTATION_IDLE,   // à utiliser au lieu de NONE pour plus de clarté
-    TURNING, 
-    ROTATING 
 };
 
 // ----- Types d'événements (issus par exemple du décodage IR) -----
@@ -56,17 +53,17 @@ class Robot {
     enum EightStep { EIGHT_NONE, EIGHT_FIRST, EIGHT_SECOND };
 
     enum class CommandeIR : unsigned long {
-        FORWARD       = 0xB847FF00,  // CH +
-        BACKWARD      = 0xBA45FF00,  // CH -
-        STOP          = 0xBC43FF00,  // Play/Pause
-        ACCEL         = 0xEA15FF00,  // +
-        DECCEL        = 0xF807FF00,  // -
-        RIGHT         = 0xBF40FF00,  // >>
-        LEFT          = 0xBB44FF00,  // <<
-        DEMITOUR      = 0xE916FF00,  // 0
-        EIGHT         = 0xAD52FF00,
-        LINEFOLLOWER  = 0xF609FF00,
-        INCREASEKP    = 0xE619FF00
+        FORWARD = 0xB847FF00,  // CH +
+        BACKWARD = 0xBA45FF00, // CH -
+        STOP = 0xBC43FF00,     // Play/Pause
+        ACCEL = 0xEA15FF00,    // +
+        DECCEL = 0xF807FF00,   // -
+        RIGHT = 0xBF40FF00,    // >>
+        LEFT = 0xBB44FF00,     // <<
+        DEMITOUR = 0xE916FF00, // 0
+        EIGHT = 0xAD52FF00,
+        LINEFOLLOWER = 0xF609FF00,
+        INCREASEKP = 0xE619FF00
     };
 
     Moteur moteurD;  // Moteur droit
@@ -74,12 +71,12 @@ class Robot {
     int robot_speed; // Vitesse courante
     int base_speed;
     GlobalState globalState;
-    MovementState movementState; // État de mouvement
-    RotationState rotationState; // État de rotation
+    MovementState movementState;         // État de mouvement
+    RotationState rotationState;         // État de rotation
     MovementState previousMovementState; // Sauvegarde de l'état avant rotation
 
-    unsigned long rotationStartTime;  // Temps de début de la rotation
-    unsigned long rotationDuration;   // Durée de rotation calculée en ms
+    unsigned long rotationStartTime; // Temps de début de la rotation
+    unsigned long rotationDuration;  // Durée de rotation calculée en ms
     uint8_t CurrentLineSensorState;
     TurnDirection lastTurnDirection;
     EightStep currentEightStep = EIGHT_NONE;
@@ -119,10 +116,10 @@ class Robot {
     void updateRotation();
     void handleEvent(RobotEvent event);
     void printState();
-    
+
     // Mouvements complexes
     void move_eight();
-    
+
     // Méthodes pour les capteurs
     void initialize_ir();
     void decode_ir();

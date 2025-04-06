@@ -2,15 +2,12 @@
 #define MOTEURS_H
 #include "ROBOT_CONFIG.h"
 
-
 // ---------------------- Constantes de vitesse ---------------------- //
 const int MAX_SPEED = 255; // Vitesse maximale du moteur (rapport cyclique maximal du signal PWM)
 
-
-
 // Déclarations des fonctions liées aux moteurs
 class Moteur {
-private:
+   private:
     int speed; // attribut de vitesse associé à chaque moteur
     // Declaration des sorties associées au moteur
     int pin_forward;
@@ -19,18 +16,13 @@ private:
     float correction;
     int last_direction = 0; // 0 : non initialisé, 1 : forward, -1 : backward
 
+   public:
+    Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float correction); // Déclaration du constructeur
 
-public:
-
-
-  Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float correction); // Déclaration du constructeur
-
-  void set_speed(int speed);
-  int get_speed();
-  void stop_engine(); // méthode qui permet d'arreter le moteur 
-  void debug();
-
+    void set_speed(int speed);
+    int get_speed();
+    void stop_engine(); // méthode qui permet d'arreter le moteur
+    void debug();
 };
-
 
 #endif
