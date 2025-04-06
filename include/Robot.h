@@ -111,6 +111,7 @@ class Robot {
     void brake();
 
     // Gestion des états
+    void syncStates();
     void changeMovementState(MovementState newMovementState);
     void changeRotationState(RotationState newRotationState);
     void update();
