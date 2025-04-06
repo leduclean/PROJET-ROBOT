@@ -1,23 +1,39 @@
 #ifndef ROBOT_H
 #define ROBOT_H
+
 #include <Arduino.h>
 #include <PID_v1.h>
-
 #include "ROBOT_CONFIG.h"
 #include "moteurs.h"
 
 // ---------------------- Constantes de vitesse ---------------------- //
-
 #define ROBOT_ACCELERATION_INCREMENT 20 // Incrément de vitesse lors de l’accélération
 #define ROBOT_MAX_SPEED 250             // Vitesse maximale du robot
-#define ROBOT_MIN_SPEED 70              // vitesse minimale
+#define ROBOT_MIN_SPEED 70              // Vitesse minimale
 
-// ----- États de mouvement et rotation
-enum RobotMovementState { MOVEMENT_IDLE, FORWARD, BACKWARD, LINEFOLLOWING, SHARPTURNING, FIGURE_EIGHT };
+// ----- États de mouvement et rotation -----
+enum class GlobalState {
+    IDLE,
+    MOVING,
+    ROTATING
+};
 
-enum RobotRotationState { ROTATION_IDLE, TURNING, ROTATING };
+enum MovementState { 
+    MOVEMENT_IDLE,   // pour éviter toute confusion avec GlobalState::IDLE
+    FORWARD, 
+    BACKWARD, 
+    LINEFOLLOWING, 
+    SHARPTURNING, 
+    FIGURE_EIGHT 
+};
 
-// ----- Types d'événements (issus par exemple du décodage IR)
+enum RotationState { 
+    ROTATION_IDLE,   // à utiliser au lieu de NONE pour plus de clarté
+    TURNING, 
+    ROTATING 
+};
+
+// ----- Types d'événements (issus par exemple du décodage IR) -----
 enum RobotEvent {
     EVENT_NONE,
     EVENT_IR_FORWARD,
@@ -36,46 +52,43 @@ enum RobotEvent {
 
 class Robot {
    private:
-    enum TurnDirection { NONE, RIGHT, LEFT };
+    enum TurnDirection { NONE_DIR, RIGHT, LEFT };
     enum EightStep { EIGHT_NONE, EIGHT_FIRST, EIGHT_SECOND };
 
     enum class CommandeIR : unsigned long {
-        FORWARD = 0xB847FF00,  // CH +
-        BACKWARD = 0xBA45FF00, // CH -
-        STOP = 0xBC43FF00,     // Play/ Pause
-        ACCEL = 0xEA15FF00,    // +
-        DECCEL = 0xF807FF00,   // -
-        RIGHT = 0xBF40FF00,    // >>
-        LEFT = 0xBB44FF00,     // <<
-        DEMITOUR = 0xE916FF00, // 0
-        EIGHT = 0xAD52FF00,
-        LINEFOLLOWER = 0xF609FF00,
-        INCREASEKP = 0xE619FF00,
-
+        FORWARD       = 0xB847FF00,  // CH +
+        BACKWARD      = 0xBA45FF00,  // CH -
+        STOP          = 0xBC43FF00,  // Play/Pause
+        ACCEL         = 0xEA15FF00,  // +
+        DECCEL        = 0xF807FF00,  // -
+        RIGHT         = 0xBF40FF00,  // >>
+        LEFT          = 0xBB44FF00,  // <<
+        DEMITOUR      = 0xE916FF00,  // 0
+        EIGHT         = 0xAD52FF00,
+        LINEFOLLOWER  = 0xF609FF00,
+        INCREASEKP    = 0xE619FF00
     };
 
     Moteur moteurD;  // Moteur droit
     Moteur moteurG;  // Moteur gauche
     int robot_speed; // Vitesse courante
     int base_speed;
-    RobotMovementState movementState; // etat de mouvement
-    RobotRotationState rotationState; // etat de rotation
+    GlobalState globalState;
+    MovementState movementState; // État de mouvement
+    RotationState rotationState; // État de rotation
+    MovementState previousMovementState; // Sauvegarde de l'état avant rotation
+
     unsigned long rotationStartTime;  // Temps de début de la rotation
     unsigned long rotationDuration;   // Durée de rotation calculée en ms
     uint8_t CurrentLineSensorState;
     TurnDirection lastTurnDirection;
     EightStep currentEightStep = EIGHT_NONE;
 
-    // float pidKp = 37.0;
-    // float pidKi = 0;
-    // float pidKd = 0;
-
-    double pid_input;    // la variable qui recevra l'erreur
-    double pid_output;   // la correction calculée par le PID
-    double pid_setpoint; // la consigne (souvent 0 pour une erreur nulle)
-    PID pidController;   // l'objet PID
-
-    // Les coefficients PID
+    // Variables et coefficients pour le PID
+    double pid_input;    // L'erreur
+    double pid_output;   // La correction calculée par le PID
+    double pid_setpoint; // La consigne (souvent 0)
+    PID pidController;   // L'objet PID
     double pidKp;
     double pidKi;
     double pidKd;
@@ -84,7 +97,6 @@ class Robot {
     bool measurementDone = false; // Flag indiquant que la mesure est terminée
 
    public:
-    // Attribut pubic
     // Constructeur
     Robot(int base_speed);
 
@@ -96,31 +108,32 @@ class Robot {
     void right(bool pivot = false);
     void left(bool pivot = false);
     void rotate(int angle, bool move = false, bool backward = false);
-    void changeMovementState(RobotMovementState newMovementState);
-    void changeRotationState(RobotRotationState newRotationState);
-    void update();
-    void move_eight();
-    void debug();
-    void printState();
+    void brake();
 
     // Gestion des états
-    void handleEvent(RobotEvent event);
+    void changeMovementState(MovementState newMovementState);
+    void changeRotationState(RotationState newRotationState);
+    void update();
     void updateMovement();
     void updateRotation();
-
+    void handleEvent(RobotEvent event);
+    void printState();
+    
+    // Mouvements complexes
+    void move_eight();
+    
     // Méthodes pour les capteurs
     void initialize_ir();
     void decode_ir();
-    // line follower
     void initialize_line_pin();
     void sharpturn();
     void line_follower_pid();
     float errorestimation();
     void resetPID();
-    // autotune
+
+    // Autotune / Mesure
     unsigned long measureOscillationPeriod();
     void updatetuning();
-    void brake();
 };
 
 #endif
