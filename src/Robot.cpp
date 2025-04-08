@@ -27,6 +27,7 @@ Robot::Robot(int base_speed) :
     CurrentLineSensorState(0),
     lastTurnDirection(NONE_DIR),
     currentEightStep(EIGHT_NONE),
+    squareDuration(3000),
     pid_input(0),
     pid_output(0),
     pid_setpoint(0),
@@ -78,11 +79,21 @@ void Robot::set_robot_speed(int speed) {
     moteurG.set_speed(speed);
 }
 
-/**
- * @brief Arrête le robot.
- */
-void Robot::stop() {
+
+void Robot::stop(){
     set_robot_speed(0);
+}
+/**
+ * @brief Arrêt d'urgence : stoppe le robot et réinitialise tous les états.
+ */
+void Robot::emergencyStop() {
+    // Stoppe immédiatement les moteurs
+    stop();
+    // Remet les états à l'état initial
+    movementState = MOVEMENT_IDLE;
+    rotationState = ROTATION_IDLE;
+    globalState = GlobalState::IDLE;
+    printState();
 }
 
 /**
@@ -131,40 +142,32 @@ void Robot::left(bool pivot) {
  * @param backward Si vrai, robot en marche arrière.
  */
 void Robot::rotate(int angle, bool move, bool backward) {
-    // Calcule la vitesse moyenne des moteurs pour obtenir une vitesse effective
-    int effectiveSpeed = (abs(moteurG.get_speed()) + abs(moteurD.get_speed())) / 2;
+    // Vitesse de rotation fixe (utilise la vitesse de base)
+    int baseRotationSpeed = base_speed;
 
-    // Calcul d'un facteur de rotation qui diminue avec la vitesse pour éviter des rotations trop brusques
-    float facteurRotation = 1.0 - (effectiveSpeed / (float)ROBOT_MAX_SPEED);
-    if (facteurRotation < 0.3) facteurRotation = 0.3;
-
-    // Vitesse de base pour la rotation, ajustée par le facteur de rotation
-    int baseRotationSpeed = (int)(robot_speed * facteurRotation);
-    baseRotationSpeed = (baseRotationSpeed < ROBOT_MIN_SPEED) ? ROBOT_MIN_SPEED : baseRotationSpeed;
-
-    // Calcul de la durée de rotation : temps par degré * nombre de degrés
-    float timePerDegree = 800.0 / 90.0; // Exemple : ~8.9 ms par degré
+    // Durée de rotation fixe (ex: 8.9 ms par degré)
+    float timePerDegree = 800.0 / 90.0; // Ajustez cette valeur selon vos besoins
     rotationDuration = abs(angle) * timePerDegree;
     rotationStartTime = millis();
 
     int speedG, speedD;
     if (!move) {
-        // Rotation sur place : les moteurs tournent en sens opposé
+        // Rotation sur place (pivot)
         speedG = (angle > 0) ? baseRotationSpeed : -baseRotationSpeed;
         speedD = (angle > 0) ? -baseRotationSpeed : baseRotationSpeed;
     } else {
-        // Rotation en mouvement : ajuste la vitesse selon l'angle
-        int moveSpeed = backward ? -robot_speed : robot_speed;
+        // Rotation en mouvement (sans modulation)
+        int moveSpeed = backward ? -baseRotationSpeed : baseRotationSpeed;
         speedG = (angle > 0) ? moveSpeed : moveSpeed / 2;
         speedD = (angle > 0) ? moveSpeed / 2 : moveSpeed;
     }
 
-    // Mémorise l'état de mouvement précédent et met à jour l'état de rotation
+    // Mise à jour des états
     previousMovementState = movementState;
     rotationState = (move ? TURNING : ROTATING);
     changeRotationState(ROTATING);
 
-    // Applique les vitesses calculées aux moteurs
+    // Applique les vitesses
     moteurG.set_speed(speedG);
     moteurD.set_speed(speedD);
 }
@@ -176,6 +179,8 @@ void Robot::rotate(int angle, bool move, bool backward) {
  */
 void Robot::decode_ir() {
     if (IrReceiver.decode()) {
+        Serial.print("Code IR reçu (HEX) : 0x");
+        Serial.println(IrReceiver.decodedIRData.decodedRawData, HEX);
         unsigned long code = IrReceiver.decodedIRData.decodedRawData;
         RobotEvent event = EVENT_NONE;
         switch (static_cast<CommandeIR>(code)) {
@@ -211,8 +216,8 @@ void Robot::decode_ir() {
                 set_robot_speed(70);
                 event = EVENT_IR_LINEFOLLOWER;
                 break;
-            case CommandeIR::INCREASEKP:
-                event = EVENT_IR_INCREASEKP;
+            case CommandeIR::SQUARE:
+                event = EVENT_IR_SQUARE;
                 break;
             default:
                 event = EVENT_NONE;
@@ -240,11 +245,19 @@ void Robot::printState() {
                               : (movementState == LINEFOLLOWING) ? "LINEFOLLOWING"
                               : (movementState == SHARPTURNING)  ? "SHARPTURNING"
                               : (movementState == FIGURE_EIGHT)  ? "FIGURE_EIGHT"
+                              : (movementState == SQUARE) ? "SQUARE"
                                                                  : "UNKNOWN";
+    String globalStateSrt = (globalState == GlobalState::IDLE) ? "IDLE"
+                            : (globalState == GlobalState::MOVING) ? "MOVING"
+                            : (globalState == GlobalState::ROTATING) ? "ROTATING"
+                            : "UNKNOWN";
     Serial.print("Rotation State: ");
     Serial.print(rotationStateStr);
     Serial.print(" | Movement State: ");
     Serial.println(movementStateStr);
+    Serial.print(" | Global State: ");
+    Serial.println(globalStateSrt);
+
 }
 
 /**
@@ -321,9 +334,12 @@ void Robot::updateMovement() {
         case FIGURE_EIGHT:
             move_eight();
             break;
+        case SQUARE:
+            move_square(); 
+            break;
         case MOVEMENT_IDLE:
         default:
-            stop();
+            emergencyStop();
             break;
     }
 }
@@ -362,7 +378,7 @@ void Robot::handleEvent(RobotEvent event) {
             right(true);
             break;
         case EVENT_IR_STOP:
-            changeMovementState(MOVEMENT_IDLE);
+            emergencyStop();
             break;
         case EVENT_IR_ACCEL:
             accel();
@@ -374,7 +390,16 @@ void Robot::handleEvent(RobotEvent event) {
             rotate(180, false, false);
             break;
         case EVENT_IR_EIGHT:
-            changeMovementState(FIGURE_EIGHT);
+            if (movementState != FIGURE_EIGHT) {
+                currentEightStep = EIGHT_NONE;
+                changeMovementState(FIGURE_EIGHT);
+            }
+            break;
+        case EVENT_IR_SQUARE:  
+            if (movementState != SQUARE) {
+                currentSquareStep = SQUARE_NONE;
+                changeMovementState(SQUARE);
+            }
             break;
         case EVENT_IR_LINEFOLLOWER:
             if (movementState == LINEFOLLOWING) {
@@ -391,14 +416,8 @@ void Robot::handleEvent(RobotEvent event) {
             break;
         case EVENT_TIMER_ROTATION_END:
             changeRotationState(ROTATION_IDLE);
-            if (movementState == FIGURE_EIGHT) {
-                if (currentEightStep == EIGHT_FIRST) {
-                    rotate(-390, true, false);
-                    currentEightStep = EIGHT_SECOND;
-                } else if (currentEightStep == EIGHT_SECOND) {
-                    changeMovementState(FORWARD);
-                    currentEightStep = EIGHT_NONE;
-                }
+            if (movementState == FIGURE_EIGHT && currentEightStep != EIGHT_DONE) {
+                move_eight(); // Passe à l'étape suivante du huit
             }
             break;
         case EVENT_NONE:
@@ -484,7 +503,7 @@ void Robot::line_follower_pid() {
     // Paramètres pour réduire la vitesse en cas d'erreur importante répétée
     const float threshold = 1.3;
     const float maxError = 2.0;
-    const float minSpeedFactor = 1;
+    const float minSpeedFactor = 0.6;
     const int iterationsThreshold = 10;
     static int highErrorCounter = 0;
 
@@ -521,23 +540,21 @@ void Robot::line_follower_pid() {
  * Sinon, effectue une rotation pour retrouver la ligne.
  */
 void Robot::sharpturn() {
-    uint8_t sensorValue = (((PIND >> 4) & 0x01) << 2) | (((PIND >> 3) & 0x01) << 1) | ((PIND >> 2) & 0x01);
-    if (sensorValue > 0) {
-        // Freine pour réduire l'inertie et réinitialise le PID
+    if (digitalRead(LINE_FOLLOWER_LEFT_PIN) == HIGH || digitalRead(LINE_FOLLOWER_MID_PIN) == HIGH ||
+        digitalRead(LINE_FOLLOWER_RIGHT_PIN) == HIGH) {
         brake();
         resetPID();
-        // Arrête la rotation en cours et repasse en mode suivi de ligne
-        changeRotationState(ROTATION_IDLE);
-        set_robot_speed(base_speed);
         changeMovementState(LINEFOLLOWING);
         return;
     } else {
-        if (rotationState == ROTATION_IDLE) {
-            // Relance une petite rotation pour retrouver la piste
-            if (lastTurnDirection == RIGHT)
-                rotate(40);
-            else if (lastTurnDirection == LEFT)
-                rotate(-40);
+        // Tourne continuellement dans la dernière direction enregistrée
+        int turnSpeed = robot_speed;
+        if (lastTurnDirection == RIGHT) {
+            moteurG.set_speed(turnSpeed);
+            moteurD.set_speed(-turnSpeed);
+        } else {
+            moteurG.set_speed(-turnSpeed);
+            moteurD.set_speed(turnSpeed);
         }
     }
 }
@@ -546,18 +563,10 @@ void Robot::sharpturn() {
  * @brief Freine le robot en réduisant progressivement la vitesse.
  */
 void Robot::brake() {
-    static int currentSpeed = base_speed;
-    const int decelerationStep = 25;
-
-    if (currentSpeed > 0) {
-        currentSpeed -= decelerationStep;
-        if (currentSpeed < 0) currentSpeed = 0;
-        moteurG.set_speed(currentSpeed);
-        moteurD.set_speed(currentSpeed);
-    } else {
-        currentSpeed = base_speed; // Réinitialise pour la prochaine utilisation
-    }
+    moteurG.set_speed(0);
+    moteurD.set_speed(0);
 }
+
 
 /**
  * @brief Réinitialise le PID.
@@ -634,8 +643,68 @@ void Robot::updatetuning() {
  * @brief Exécute le mouvement en huit.
  */
 void Robot::move_eight() {
-    if (currentEightStep == EIGHT_NONE) {
-        rotate(360, true, false);
-        currentEightStep = EIGHT_FIRST;
+    switch (currentEightStep) {
+        case EIGHT_NONE:
+            rotate(360, true, false); // Premier demi-tour à droite
+            currentEightStep = EIGHT_FIRST;
+            break;
+        case EIGHT_FIRST:
+            rotate(-390, true, false); // Deuxième demi-tour à gauche
+            currentEightStep = EIGHT_SECOND;
+            break;
+        case EIGHT_SECOND:
+            currentEightStep = EIGHT_DONE; // Marque la fin du huit
+            changeMovementState(FORWARD);
+            break;
+        case EIGHT_DONE:
+            break;
+    }
+}
+
+void Robot::move_square() {
+    static unsigned long rotationEndTime = 0;
+    
+    Serial.print("Étape carré: ");
+    Serial.print(currentSquareStep);
+    Serial.print(" | Rotation State: ");
+    Serial.println(rotationState);
+
+    switch (currentSquareStep) {
+        case SQUARE_NONE:
+            set_robot_speed(base_speed);
+            squareStartTime = millis();
+            currentSquareStep = SQUARE_MOVE_FORWARD;
+            break;
+
+        case SQUARE_MOVE_FORWARD:
+            if (millis() - squareStartTime < squareDuration) {
+                set_robot_speed(base_speed);
+            } else {
+                stop();
+                rotate(90, false, false);
+                rotationEndTime = millis() + rotationDuration; // Calcule la fin de rotation
+                currentSquareStep = SQUARE_WAIT_ROTATION;
+            }
+            break;
+
+        case SQUARE_WAIT_ROTATION:
+            // Attente passive sans appeler updateMovement()
+            if (millis() >= rotationEndTime) {
+                currentSquareStep = SQUARE_MOVE_FORWARD;
+                squareStartTime = millis();
+                
+                // Après 4 côtés, terminer
+                if (++rotationCount >= 4) {
+                    currentSquareStep = SQUARE_DONE;
+                }
+            }
+            break;
+
+        case SQUARE_DONE:
+            stop();
+            changeMovementState(FORWARD);
+            currentSquareStep = SQUARE_NONE;
+            rotationCount = 0;
+            break;
     }
 }

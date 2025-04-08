@@ -21,7 +21,8 @@ enum MovementState {
     BACKWARD,
     LINEFOLLOWING,
     SHARPTURNING,
-    FIGURE_EIGHT
+    FIGURE_EIGHT,
+    SQUARE
 };
 
 enum RotationState {
@@ -42,6 +43,7 @@ enum RobotEvent {
     EVENT_IR_DECCEL,
     EVENT_IR_DEMITOUR,
     EVENT_IR_EIGHT,
+    EVENT_IR_SQUARE,
     EVENT_IR_LINEFOLLOWER,
     EVENT_IR_INCREASEKP,
     EVENT_TIMER_ROTATION_END // événement interne déclenché par le timer de rotation
@@ -50,7 +52,13 @@ enum RobotEvent {
 class Robot {
    private:
     enum TurnDirection { NONE_DIR, RIGHT, LEFT };
-    enum EightStep { EIGHT_NONE, EIGHT_FIRST, EIGHT_SECOND };
+    enum EightStep { EIGHT_NONE, EIGHT_FIRST, EIGHT_SECOND, EIGHT_DONE };
+    enum SquareStep {
+        SQUARE_NONE,
+        SQUARE_MOVE_FORWARD,
+        SQUARE_WAIT_ROTATION,
+        SQUARE_DONE
+    };
 
     enum class CommandeIR : unsigned long {
         FORWARD = 0xB847FF00,  // CH +
@@ -61,9 +69,9 @@ class Robot {
         RIGHT = 0xBF40FF00,    // >>
         LEFT = 0xBB44FF00,     // <<
         DEMITOUR = 0xE916FF00, // 0
-        EIGHT = 0xAD52FF00,
-        LINEFOLLOWER = 0xF609FF00,
-        INCREASEKP = 0xE619FF00
+        EIGHT = 0xAD52FF00, // 8
+        SQUARE = 0xE31CFF00, // 5 
+        LINEFOLLOWER = 0xF609FF00 // EQ
     };
 
     Moteur moteurD;  // Moteur droit
@@ -77,9 +85,19 @@ class Robot {
 
     unsigned long rotationStartTime; // Temps de début de la rotation
     unsigned long rotationDuration;  // Durée de rotation calculée en ms
+
+    
     uint8_t CurrentLineSensorState;
     TurnDirection lastTurnDirection;
+    
+    // Pour le huit
     EightStep currentEightStep = EIGHT_NONE;
+
+    // Pour le carré
+    SquareStep currentSquareStep;
+    unsigned long squareStartTime;
+    unsigned long squareDuration;
+    int rotationCount = 0;
 
     // Variables et coefficients pour le PID
     double pid_input;    // L'erreur
@@ -100,6 +118,7 @@ class Robot {
     // Méthodes pour les moteurs
     void set_robot_speed(int speed);
     void stop();
+    void emergencyStop();
     void accel();
     void deccel();
     void right(bool pivot = false);
@@ -119,6 +138,7 @@ class Robot {
 
     // Mouvements complexes
     void move_eight();
+    void move_square();
 
     // Méthodes pour les capteurs
     void initialize_ir();
