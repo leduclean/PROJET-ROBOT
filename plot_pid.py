@@ -1,49 +1,53 @@
-import serial
+import csv
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 
-# Remplace 'COM3' par le bon port série (sur Linux/Mac : '/dev/ttyUSB0' ou '/dev/ttyACM0')
-ser = serial.Serial('COM8', 9600, timeout=1)
+# Listes pour stocker les données
+times = []
+errors = []
+corrections = []
+left_speeds = []
+right_speeds = []
 
-erreurs = []
-sorties_pid = []
-temps = []
+# Lecture du fichier CSV
+with open('log.csv', 'r') as csvfile:
+    reader = csv.reader(csvfile)
+    next(reader)  # sauter l'en-tête
+    for row in reader:
+        if len(row) < 5:
+            continue
+        try:
+            time_ms = float(row[0])
+            times.append(time_ms / 1000)  # conversion en secondes
+            errors.append(float(row[1]))
+            corrections.append(float(row[2]))
+            left_speeds.append(int(row[3]))
+            right_speeds.append(int(row[4]))
+        except ValueError:
+            continue  # ignore les lignes corrompues
 
-fig, ax = plt.subplots()
-ax.set_ylim(-3, 3)  # Ajuste selon la plage de ton PID
-ax.set_xlim(0, 100)  # 100 points affichés en continu
-line1, = ax.plot([], [], label="Erreur")
-line2, = ax.plot([], [], label="Sortie PID")
+# Affichage des graphiques
+plt.figure(figsize=(12, 8))
+
+plt.subplot(3, 1, 1)
+plt.plot(times, errors, label="Erreur PID", color='orange')
+plt.ylabel("Erreur")
+plt.grid()
 plt.legend()
 
-def update(frame):
-    global erreurs, sorties_pid, temps
-    try:
-        data = ser.readline().decode().strip()
-        if data:
-            values = data.split()
-            if len(values) == 2:
-                erreur = float(values[0])
-                sortie_pid = float(values[1])
+plt.subplot(3, 1, 2)
+plt.plot(times, corrections, label="Correction PID", color='blue')
+plt.ylabel("Correction")
+plt.grid()
+plt.legend()
 
-                erreurs.append(erreur)
-                sorties_pid.append(sortie_pid)
-                temps.append(len(erreurs))
+plt.subplot(3, 1, 3)
+plt.plot(times, left_speeds, label="Vitesse Gauche", color='green')
+plt.plot(times, right_speeds, label="Vitesse Droite", color='red')
+plt.xlabel("Temps (s)")
+plt.ylabel("Vitesses Moteurs")
+plt.grid()
+plt.legend()
 
-                if len(erreurs) > 100:  # Garde les 100 dernières valeurs
-                    erreurs.pop(0)
-                    sorties_pid.pop(0)
-                    temps.pop(0)
-
-                line1.set_data(temps, erreurs)
-                line2.set_data(temps, sorties_pid)
-                ax.set_xlim(max(0, len(erreurs) - 100), len(erreurs))
-    
-    except Exception as e:
-        print(f"Erreur : {e}")
-
-    return line1, line2
-
-ani = animation.FuncAnimation(fig, update, interval=50, blit=True)
+plt.tight_layout()
+plt.suptitle("Analyse PID Robot suiveur de ligne", fontsize=16, y=1.02)
 plt.show()
-ser.close()

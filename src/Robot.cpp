@@ -24,7 +24,6 @@ Robot::Robot(int base_speed) :
     previousMovementState(MOVEMENT_IDLE),
     rotationStartTime(0),
     rotationDuration(0),
-    CurrentLineSensorState(0),
     lastTurnDirection(NONE_DIR),
     currentEightStep(EIGHT_NONE),
     squareDuration(3000),
@@ -34,7 +33,8 @@ Robot::Robot(int base_speed) :
     pidController(&pid_input, &pid_output, &pid_setpoint, 19, 85, 20, DIRECT),
     pidKp(19),
     pidKi(85),
-    pidKd(20) {
+    pidKd(20),
+    index(0) {
     // Initialisation des capteurs IR et des broches de suivi de ligne
     initialize_ir();
     initialize_line_pin();
@@ -53,7 +53,7 @@ Robot::Robot(int base_speed) :
  * @brief Initialise le récepteur IR.
  */
 void Robot::initialize_ir() {
-    Serial.println("Initialisation IR");
+    // Serial.println("Initialisation IR");
     // Démarre le récepteur IR avec retour LED activé pour le debug
     IrReceiver.begin(IR_RECEIVER_PIN, ENABLE_LED_FEEDBACK);
 }
@@ -403,6 +403,7 @@ void Robot::handleEvent(RobotEvent event) {
             break;
         case EVENT_IR_LINEFOLLOWER:
             if (movementState == LINEFOLLOWING) {
+                envoyerDonnees();
                 changeMovementState(MOVEMENT_IDLE);
                 stop();
             } else {
@@ -492,6 +493,10 @@ float Robot::errorestimation() {
  * Une modulation de la vitesse est appliquée si l'erreur est élevée de façon répétée.
  */
 void Robot::line_follower_pid() {
+    // pour enregister les données 
+    static unsigned long lastRecordTime = 0;
+    unsigned long currentTime = millis();
+
     pid_input = errorestimation();
     pidController.Compute();
     float correction = pid_output;
@@ -531,6 +536,12 @@ void Robot::line_follower_pid() {
     // Applique les vitesses corrigées aux moteurs
     moteurG.set_speed(leftSpeed);
     moteurD.set_speed(rightSpeed);
+
+    if (currentTime - lastRecordTime >= 50) {
+        enregistrer(moteurG.get_speed(), moteurD.get_speed(), currentTime);
+        lastRecordTime = currentTime;
+    }
+
 }
 
 /**
@@ -588,6 +599,7 @@ void Robot::resetPID() {
  *
  * @return Période d'oscillation en ms, ou 0 si non mesurée.
  */
+// * 
 unsigned long Robot::measureOscillationPeriod() {
     static bool firstPeakDetected = false; // Indique si le premier pic a été détecté
     static unsigned long lastPeakTime = 0; // Temps du dernier pic détecté
@@ -664,10 +676,10 @@ void Robot::move_eight() {
 void Robot::move_square() {
     static unsigned long rotationEndTime = 0;
     
-    Serial.print("Étape carré: ");
-    Serial.print(currentSquareStep);
-    Serial.print(" | Rotation State: ");
-    Serial.println(rotationState);
+    // Serial.print("Étape carré: ");
+    // Serial.print(currentSquareStep);
+    // Serial.print(" | Rotation State: ");
+    // Serial.println(rotationState);
 
     switch (currentSquareStep) {
         case SQUARE_NONE:
@@ -707,4 +719,25 @@ void Robot::move_square() {
             rotationCount = 0;
             break;
     }
+}
+
+// Envoie des donnés pour le graphique 
+void Robot::enregistrer(int vg, int vd, unsigned long t) {
+    if (index < MAX_POINTS) {
+        vitesseMoteurDroit[index] = vd;
+        vitesseMoteurGauche[index] = vg;
+        timeStamp[index]  = t;
+        index++;
+    }
+}
+
+void Robot::envoyerDonnees() {
+    for (int i = 0; i  < index; i++) {
+        Serial.print(timeStamp[i]);
+        Serial.print(",");
+        Serial.print(vitesseMoteurGauche[i]);
+        Serial.print(",");
+        Serial.println(vitesseMoteurDroit[i]);
+    }
+    index = 0;
 }

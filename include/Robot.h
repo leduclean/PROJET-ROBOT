@@ -83,11 +83,10 @@ class Robot {
     RotationState rotationState;         // État de rotation
     MovementState previousMovementState; // Sauvegarde de l'état avant rotation
 
-    unsigned long rotationStartTime; // Temps de début de la rotation
-    unsigned long rotationDuration;  // Durée de rotation calculée en ms
+    uint32_t rotationStartTime; // Temps de début de la rotation
+    uint16_t rotationDuration;  // Durée de rotation calculée en ms
 
     
-    uint8_t CurrentLineSensorState;
     TurnDirection lastTurnDirection;
     
     // Pour le huit
@@ -95,22 +94,27 @@ class Robot {
 
     // Pour le carré
     SquareStep currentSquareStep;
-    unsigned long squareStartTime;
-    unsigned long squareDuration;
+    uint32_t squareStartTime;
+    uint32_t squareDuration;
     int rotationCount = 0;
 
     // Variables et coefficients pour le PID
-    double pid_input;    // L'erreur
-    double pid_output;   // La correction calculée par le PID
-    double pid_setpoint; // La consigne (souvent 0)
+    double pid_input;
+    double pid_output;
+    double pid_setpoint;
     PID pidController;   // L'objet PID
-    double pidKp;
-    double pidKi;
-    double pidKd;
+    float pidKp;
+    float pidKi;
+    float pidKd;
     float Ku = 90;
 
     bool measurementDone = false; // Flag indiquant que la mesure est terminée
 
+    static const uint16_t MAX_POINTS = 100;  // Ajustez en fonction de la mémoire disponible
+    int16_t vitesseMoteurGauche[MAX_POINTS];
+    int16_t vitesseMoteurDroit[MAX_POINTS];    
+    uint16_t timeStamp[MAX_POINTS];
+    int index;
    public:
     // Constructeur
     Robot(int base_speed);
@@ -152,6 +156,8 @@ class Robot {
     // Autotune / Mesure
     unsigned long measureOscillationPeriod();
     void updatetuning();
+    
+    void enregistrer(int vg, int vd, unsigned long t);
+    void envoyerDonnees();
 };
-
 #endif

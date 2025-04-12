@@ -1,27 +1,29 @@
 #ifndef MOTEURS_H
 #define MOTEURS_H
+
 #include "ROBOT_CONFIG.h"
+#include <stdint.h>  // Pour les types uint8_t, int16_t, int8_t etc.
 
-// ---------------------- Constantes de vitesse ---------------------- //
-const int MAX_SPEED = 255; // Vitesse maximale du moteur (rapport cyclique maximal du signal PWM)
+// ---------------------- Constante de vitesse ---------------------- //
+const uint8_t MAX_SPEED = 255; // Vitesse maximale (rapport cyclique maximal du signal PWM)
 
-// Déclarations des fonctions liées aux moteurs
+// Déclaration de la classe Moteur
 class Moteur {
    private:
-    int speed; // attribut de vitesse associé à chaque moteur
-    // Declaration des sorties associées au moteur
-    int pin_forward;
-    int pin_backward;
-    int PWM_pin;
-    float correction;
-    int last_direction = 0; // 0 : non initialisé, 1 : forward, -1 : backward
+    int16_t speed;         // Vitesse du moteur (-255 à 255)
+    uint8_t pin_forward;   // Broche pour avancer
+    uint8_t pin_backward;  // Broche pour reculer
+    uint8_t PWM_pin;       // Broche PWM
+    float correction;      // Correction (pour ajustement de la vitesse)
+    int8_t last_direction; // 0 : non initialisé, 1 : forward, -1 : backward
 
    public:
-    Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float correction); // Déclaration du constructeur
+    // Constructeur avec types optimisés
+    Moteur(int16_t speed, uint8_t pin_forward, uint8_t pin_backward, uint8_t PWM_pin, float correction);
 
-    void set_speed(int speed);
-    int get_speed();
-    void stop_engine(); // méthode qui permet d'arreter le moteur
+    void set_speed(int16_t speed);
+    int16_t get_speed();
+    void stop_engine(); // Permet d'arrêter le moteur
     void debug();
 };
 

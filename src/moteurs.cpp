@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 // Constructeur avec initialisation de la speed
-Moteur::Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float correction) :
+Moteur::Moteur(int16_t speed, uint8_t pin_forward, uint8_t pin_backward, uint8_t PWM_pin, float correction) :
     speed(speed), pin_forward(pin_forward), pin_backward(pin_backward), PWM_pin(PWM_pin), correction(correction) {
     // On déclare les pins associés au controle du moteur en mode sortie car on va envoyer une tension au controleur de
     // moteur
@@ -13,7 +13,7 @@ Moteur::Moteur(int speed, int pin_forward, int pin_backward, int PWM_pin, float 
 };
 
 // Gere la vitesse du robot et la direction: si positif: avant, si négatif: arriere
-void Moteur::set_speed(int speed) {
+void Moteur::set_speed(int16_t speed) {
     // Calculer la vitesse corrigée (toujours positive)
     int correctedSpeed = abs(speed) * this->correction;
     this->speed = correctedSpeed;
@@ -31,7 +31,7 @@ void Moteur::set_speed(int speed) {
     analogWrite(this->PWM_pin, correctedSpeed);
 }
 
-int Moteur::get_speed() {
+int16_t Moteur::get_speed() {
     return this->speed;
 }
 
