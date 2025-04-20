@@ -1,0 +1,37 @@
+@startuml
+skinparam sequenceArrowThickness 2
+skinparam sequenceMessageAlign center
+skinparam sequenceParticipant underline
+skinparam maxMessageSize 120
+
+actor "Utilisateur" as U
+participant "IRReceiver" as IR
+participant "Robot"      as R
+participant "Moteur G"   as MG
+participant "Moteur D"   as MD
+
+== Réception et décodage IR ==
+U -> IR : Appuie sur un bouton\n(télécommande)
+IR -> R : decodeIR() : CodeIR
+
+note right of R
+  CodeIR → RobotEvent
+  (mapping dans handleEvent)
+end note
+
+R -> R : handleEvent(event)
+R -> R : syncStates()
+
+== Exécution de la commande ==
+alt Rotation demandée
+  R -> R : rotate(angle, mode)\n// démarre timer de rotation
+  R -> MG : setSpeed(speedG)
+  R -> MD : setSpeed(speedD)
+else Mouvement linéaire
+  R -> MG : setSpeed(baseSpeed)
+  R -> MD : setSpeed(baseSpeed)
+end
+
+== Mise à jour ==
+R -> R : update()\n// vérifie timer et changeRotationState()
+@enduml

@@ -1,0 +1,44 @@
+@startuml
+' --- Définition des classes ---
+class Robot {
+  - moteurD : Moteur
+  - moteurG : Moteur
+  - pid : PIDController
+  - globalState : GlobalState
+  - movementState : MovementState
+  - rotationState : RotationState
+
+  + decodeIR() : void
+  + handleEvent(code : CodeIR) : void
+  + update() : void
+  + changeMovementState(state : MovementState) : void
+  + changeRotationState(state : RotationState) : void
+  + syncStates() : void
+}
+
+interface IRReceiver {
+  + decode() : CodeIR
+}
+
+class PIDController {
+  - kp : double
+  - ki : double
+  - kd : double
+  + compute(error : double) : double
+}
+
+class Moteur {
+  - speed : int
+  + setSpeed(value : int) : void
+  + getSpeed() : int
+}
+
+' --- Relations et cardinalités ---
+Robot *-- "2" Moteur        : possède
+Robot *-- PIDController     : possède
+Robot --> IRReceiver        : utilise
+Robot ..> PIDController     : transmet « erreur »
+PIDController ..> Robot     : renvoie « correction »
+Robot --> Moteur            : commande setSpeed()
+
+@enduml
